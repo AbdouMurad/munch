@@ -5,3 +5,37 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+# Secrets: never commit these (keep a .env.example instead)
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Python (server/)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+
+# Node (frontend/) -- frontend/.gitignore covers Expo specifics
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+*.log
