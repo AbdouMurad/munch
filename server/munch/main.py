@@ -14,10 +14,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from munch.config import Settings, get_settings
 from munch.models import ErrorBody, ErrorCode, ErrorResponse, HealthResponse
+from munch.ranking.deck import make_deck_builder
 from munch.realtime import ws
 from munch.realtime.hub import Hub
 from munch.realtime.sweeper import run_sweeper
-from munch.rooms.fixture_deck import build_fixture_deck
+from munch.rooms.fixture_deck import DeckBuilder, build_fixture_deck
 from munch.rooms.manager import RoomError, RoomManager
 from munch.routes import rooms as rooms_routes
 from munch.state import AppState
@@ -46,13 +47,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         idle_ttl=settings.idle_room_ttl,
     )
     db_pool = None
+    build_deck: DeckBuilder = build_fixture_deck
     if settings.database_url:
         db_pool = await asyncpg.create_pool(settings.database_url, min_size=1)
+        build_deck = make_deck_builder(db_pool, settings)
     else:
-        log.warning("DATABASE_URL not set: running without a DB (no persistence or /stats)")
-    # TODO(ranking): use the PostGIS deck builder when db_pool is set.
+        log.warning("DATABASE_URL not set: running without a DB (fixture deck, no /stats)")
     state = AppState(
-        settings=settings, rooms=rooms, hub=Hub(), build_deck=build_fixture_deck, db_pool=db_pool
+        settings=settings, rooms=rooms, hub=Hub(), build_deck=build_deck, db_pool=db_pool
     )
     app.state.munch = state
     sweeper = asyncio.create_task(run_sweeper(rooms, state.hub))

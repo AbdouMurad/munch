@@ -37,7 +37,13 @@ class LatLng(CamelModel):
 
 class Filters(CamelModel):
     price_levels: list[PriceLevel] | None = None  # None/empty = any
+    # With price_levels set, also keep places Google has no price for (~16% of them).
+    include_unknown_price: bool = True
+    include_types: list[str] = []  # any of, e.g. ["sushi_restaurant", "ramen_restaurant"]
     exclude_types: list[str] = []  # e.g. ["fast_food_restaurant"]
+    min_rating: Annotated[float, Field(ge=1, le=5)] | None = None
+    min_reviews: Annotated[int, Field(ge=0)] = 0
+    open_now: bool = False  # Vancouver time; drops places with no hours on file
 
 
 class Member(CamelModel):
