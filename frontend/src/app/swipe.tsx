@@ -1,8 +1,16 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 
-import { Avatar, ChunkyBox, ErrorLine, Eye, ProgressBar, Screen } from '@/components/ui';
+import { Avatar, ChunkyBox, ErrorLine, Eye, Screen } from '@/components/ui';
 import { describe, initials, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -24,7 +32,25 @@ function RoundButton({ symbol, label, background, symbolColor, onPress }: {
   );
 }
 
+// How far (in pixels) you must drag a card before it counts as an answer.
+// Drag less than this and let go, and the card bounces back to the middle.
+const SWIPE_DISTANCE = 120;
+
+// Makes a "gradient": a color that fades from see-through to solid.
+//   direction = which way it gets stronger ("right" or "left")
+// Phones and web browsers spell this rule differently, so we write it both
+// ways and each one reads the spelling it understands.
+function fadeTo(direction: 'left' | 'right', color: string) {
+  // The "00" on the end of a color means "completely see-through".
+  const gradient = `linear-gradient(to ${direction}, ${color}00, ${color})`;
+  return {
+    experimental_backgroundImage: gradient, // phones
+    backgroundImage: gradient, // web browsers
+  } as ViewStyle;
+}
+
 // SWIPE SCREEN: look at one restaurant at a time and say yes or no.
+// You can answer two ways: tap a button, or drag the card left or right.
 export default function SwipeScreen() {
   const { colors } = useAppTheme();
 
@@ -36,6 +62,12 @@ export default function SwipeScreen() {
   const [cardNumber, setCardNumber] = useState(game.startAt);
   const card = game.deck[cardNumber];
 
+  // How far the card has been dragged sideways. 0 = resting in the middle,
+  // a plus number = dragged right, a minus number = dragged left.
+  // It's an "Animated" number, so things that follow it move smoothly.
+  // (useState with a function makes it ONCE and keeps the same one forever.)
+  const [dragX] = useState(() => new Animated.Value(0));
+
   // Not in a room (for example, the page was refreshed)? Go back home.
   if (!room) return <Redirect href="/" />;
   // No card left to show? Then we are done.
@@ -44,7 +76,6 @@ export default function SwipeScreen() {
   // Tell the server what we thought, then show the next card.
   // If that was the last card, go to the "done" screen.
   // (If EVERYONE liked this one, the server says so and game.tsx jumps to the winner.)
-  // TODO: let people drag the card left/right too (right now only the buttons work)
   function answer(liked: boolean) {
     game.swipe(card, liked);
     if (cardNumber + 1 < game.deck.length) {
@@ -53,6 +84,66 @@ export default function SwipeScreen() {
       router.replace('/done');
     }
   }
+
+  // Slide the card off the side of the screen, THEN count the answer and
+  // put the (new) card back in the middle. Buttons and swipes both use this.
+  function flyAway(liked: boolean) {
+    Animated.timing(dragX, {
+      toValue: liked ? 500 : -500, // far enough to be off the screen
+      duration: 200, // takes 200 milliseconds (a fifth of a second)
+      useNativeDriver: false,
+    }).start(() => {
+      answer(liked);
+      dragX.setValue(0);
+    });
+  }
+
+  // This watches your finger on the card.
+  const panResponder = PanResponder.create({
+    // Only start a drag if the finger moves sideways a little.
+    // (So a plain tap, or scrolling up and down, doesn't move the card.)
+    onMoveShouldSetPanResponder: (_, finger) => Math.abs(finger.dx) > 5,
+    // Don't let the scrolling screen steal the finger halfway through a drag.
+    onPanResponderTerminationRequest: () => false,
+    // While dragging: the card follows the finger. (dx = how far it has moved sideways)
+    onPanResponderMove: (_, finger) => dragX.setValue(finger.dx),
+    // When the finger lets go: far right = yes, far left = nope, otherwise bounce back.
+    onPanResponderRelease: (_, finger) => {
+      if (finger.dx > SWIPE_DISTANCE) {
+        flyAway(true);
+      } else if (finger.dx < -SWIPE_DISTANCE) {
+        flyAway(false);
+      } else {
+        Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
+      }
+    },
+  });
+
+  // These numbers FOLLOW dragX. "interpolate" means: when dragX is this, I am that.
+  // The card tilts a little as it moves, like a real card in your hand.
+  const tilt = dragX.interpolate({
+    inputRange: [-200, 0, 200],
+    outputRange: ['-10deg', '0deg', '10deg'],
+  });
+  // The green glow: invisible in the middle, slowly appearing as the card goes right.
+  // ("clamp" means it stops at the end numbers instead of going past them.)
+  const yesGlow = dragX.interpolate({
+    inputRange: [0, SWIPE_DISTANCE],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  // The red glow: the same thing, but for going left.
+  const nopeGlow = dragX.interpolate({
+    inputRange: [-SWIPE_DISTANCE, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  // How many cards are left, counting the one we are looking at.
+  const cardsLeft = game.deck.length - cardNumber;
+  // The pile behind the top card shows up to 3 cards. As the deck runs out,
+  // the pile gets smaller: that's how you can see your progress.
+  const pile = [3, 2, 1].filter((n) => n < cardsLeft);
 
   // Count the friends who have finished all their cards.
   const finishedCount = room.members.filter((m) => m.progress >= room.deckSize).length;
@@ -74,13 +165,12 @@ export default function SwipeScreen() {
       <View style={styles.progress}>
         <View style={styles.row}>
           <Text style={{ color: colors.softText }}>
-            Card {cardNumber + 1} of {game.deck.length}
+            {cardsLeft} {cardsLeft === 1 ? 'card' : 'cards'} left
           </Text>
           <Text style={{ color: colors.softText }}>
             {finishedCount} of {room.members.length} finished
           </Text>
         </View>
-        <ProgressBar fraction={(cardNumber + 1) / game.deck.length} />
 
         {/* One little circle per friend. A check means they are finished. */}
         <View style={styles.avatars}>
@@ -96,24 +186,38 @@ export default function SwipeScreen() {
 
       {/* ---------- The restaurant card ---------- */}
       <View style={styles.cardArea}>
-        {/* This box is exactly as big as the card, so the pretend card
+        {/* This box is exactly as big as the card, so the pile of cards
             behind it can copy its size. */}
-        <View>
-          {/* A pretend card peeking out behind, so it looks like a stack. */}
-          <View
-            style={[styles.backCard, { backgroundColor: colors.soft, borderColor: colors.softText }]}
-          />
+        <View style={styles.cardStack}>
+          {/* The pile: blank cards peeking out underneath, each one a bit
+              lower and a bit narrower than the one above it. */}
+          {pile.map((n) => (
+            <View
+              key={n}
+              style={[
+                styles.pileCard,
+                {
+                  backgroundColor: colors.soft,
+                  borderColor: colors.text,
+                  top: n * 9,
+                  bottom: -n * 9,
+                  left: n * 9,
+                  right: n * 9 + 6,
+                },
+              ]}
+            />
+          ))}
 
-          {/* The real card, tilted a tiny bit. */}
-          <View style={styles.tilt}>
+          {/* The real card. It follows your finger (translateX) and tilts as it goes.
+              "panHandlers" is what connects it to the finger-watcher above. */}
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={{ transform: [{ translateX: dragX }, { rotate: tilt }] }}>
             <ChunkyBox background={colors.card} radius={20}>
               {/* Top half: the restaurant photo (our eye mascot for now).
                   TODO: show the real photo once the server sends photoUrl */}
               <View style={[styles.photo, { backgroundColor: colors.soft }]}>
                 <Eye size={170} />
-                <View style={[styles.sticker, { borderColor: colors.accent }]}>
-                  <Text style={[styles.stickerText, { color: colors.accent }]}>OH YES</Text>
-                </View>
               </View>
 
               {/* Bottom half: the name and details. */}
@@ -128,8 +232,28 @@ export default function SwipeScreen() {
                 )}
                 {card.address && <Text style={{ color: colors.softText }}>{card.address}</Text>}
               </View>
+
+              {/* The GREEN glow. It covers the whole card and fades from nothing
+                  (left side) to green (right side). It is invisible until you
+                  drag right, because its opacity follows yesGlow. */}
+              <Animated.View
+                pointerEvents="none" // touches go straight through it to the card
+                style={[styles.glow, fadeTo('right', colors.yes), { opacity: yesGlow }]}>
+                <View style={[styles.sticker, styles.yesSticker, { borderColor: colors.card }]}>
+                  <Text style={[styles.stickerText, { color: colors.card }]}>OH YES</Text>
+                </View>
+              </Animated.View>
+
+              {/* The RED glow: the mirror image, for dragging left. */}
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.glow, fadeTo('left', colors.nope), { opacity: nopeGlow }]}>
+                <View style={[styles.sticker, styles.nopeSticker, { borderColor: colors.card }]}>
+                  <Text style={[styles.stickerText, { color: colors.card }]}>NOPE</Text>
+                </View>
+              </Animated.View>
             </ChunkyBox>
-          </View>
+          </Animated.View>
         </View>
       </View>
 
@@ -142,18 +266,18 @@ export default function SwipeScreen() {
           label="Nope"
           background={colors.card}
           symbolColor={colors.text}
-          onPress={() => answer(false)}
+          onPress={() => flyAway(false)}
         />
         <RoundButton
           symbol="♥"
           label="Yes"
           background={colors.primary}
           symbolColor={colors.onPrimary}
-          onPress={() => answer(true)}
+          onPress={() => flyAway(true)}
         />
       </View>
       <Text style={[styles.hint, { color: colors.softText }]}>
-        Tap the heart for yes, the X for no
+        Swipe right for yes, left for no
       </Text>
     </Screen>
   );
@@ -187,19 +311,21 @@ const styles = StyleSheet.create({
     flex: 1, // the card gets all the leftover space
     justifyContent: 'center',
   },
-  backCard: {
+  cardStack: {
+    marginHorizontal: 10,
+    marginBottom: 30, // room for the pile to peek out underneath
+  },
+  pileCard: {
     position: 'absolute', // sits behind the real card
-    top: 6,
-    bottom: 6,
-    left: 0,
-    right: 30,
     borderWidth: 2,
     borderRadius: 20,
-    transform: [{ rotate: '-3deg' }],
   },
-  tilt: {
-    marginHorizontal: 10,
-    transform: [{ rotate: '2deg' }],
+  glow: {
+    position: 'absolute', // stretched over the whole card
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   photo: {
     height: 240,
@@ -207,13 +333,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sticker: {
-    position: 'absolute', // pinned to the top-left corner of the photo
-    top: 14,
-    left: 14,
+    position: 'absolute', // pinned near the top of the card
+    top: 18,
     borderWidth: 3,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 2,
+  },
+  // "OH YES" sits on the green (right) side, "NOPE" on the red (left) side.
+  yesSticker: {
+    right: 16,
+    transform: [{ rotate: '8deg' }],
+  },
+  nopeSticker: {
+    left: 16,
     transform: [{ rotate: '-8deg' }],
   },
   stickerText: {
