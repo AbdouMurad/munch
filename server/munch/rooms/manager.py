@@ -74,6 +74,7 @@ class LiveRoom:
     swiped: dict[str, set[str]] = field(default_factory=dict)  # member_id → restaurant ids
     starting: bool = False  # deck is being built; blocks a second Start
     ended_at: datetime | None = None
+    outcome: Outcome | None = None  # replayed to clients that reconnect after the end
 
     def active_members(self) -> list[LiveMember]:
         return [m for m in self.members.values() if m.active]
@@ -307,9 +308,10 @@ class RoomManager:
         room.last_activity = now
         return member
 
-    def _end(self, room: LiveRoom, status: RoomStatus) -> None:
+    def _end(self, room: LiveRoom, status: RoomStatus, outcome: Outcome | None = None) -> None:
         room.status = status
         room.ended_at = self._clock()
+        room.outcome = outcome
 
     def _check_match(self, room: LiveRoom, restaurant_ids: list[str]) -> Outcome | None:
         """First restaurant (in the given order) liked by every active member wins."""
@@ -319,18 +321,20 @@ class RoomManager:
         for rid in restaurant_ids:
             likers = room.likes.get(rid, set())
             if all(mid in likers for mid in active):
-                self._end(room, "matched")
                 card = next(c for c in room.deck if c.id == rid)
                 liked_by = [mid for mid in room.members if mid in likers]
-                return RoomMatchedPayload(card=card, liked_by=liked_by)
+                matched = RoomMatchedPayload(card=card, liked_by=liked_by)
+                self._end(room, "matched", matched)
+                return matched
         return None
 
     def _check_exhausted(self, room: LiveRoom) -> Outcome | None:
         active = room.active_members()
         if not active or any(m.progress < len(room.deck) for m in active):
             return None
-        self._end(room, "exhausted")
-        return RoomExhaustedPayload(top_picks=top_picks(room))
+        exhausted = RoomExhaustedPayload(top_picks=top_picks(room))
+        self._end(room, "exhausted", exhausted)
+        return exhausted
 
 
 def top_picks(room: LiveRoom, n: int = TOP_PICKS) -> list[TopPick]:

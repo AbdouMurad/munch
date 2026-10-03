@@ -1,0 +1,650 @@
+[
+ {
+  "id": "fixture-001",
+  "name": "Noodle Lantern",
+  "lat": 49.277,
+  "lng": -123.124749,
+  "address": "1014 Fake St, Downtown, Vancouver, BC",
+  "rating": 4.4,
+  "rating_count": 35,
+  "price_level": 2,
+  "primary_type": "ramen_restaurant",
+  "types": [
+   "ramen_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-002",
+  "name": "Salt & Ember",
+  "lat": 49.28612,
+  "lng": -123.101941,
+  "address": "456 Fake St, Gastown, Vancouver, BC",
+  "rating": 4.6,
+  "rating_count": 900,
+  "price_level": 4,
+  "primary_type": "steak_house",
+  "types": [
+   "steak_house",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-003",
+  "name": "Little Basil",
+  "lat": 49.269758,
+  "lng": -123.126665,
+  "address": "2169 Fake St, Yaletown, Vancouver, BC",
+  "rating": 4.1,
+  "rating_count": 900,
+  "price_level": 2,
+  "primary_type": "thai_restaurant",
+  "types": [
+   "thai_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-004",
+  "name": "Pho Harbour",
+  "lat": 49.282386,
+  "lng": -123.131302,
+  "address": "2332 Fake St, West End, Vancouver, BC",
+  "rating": 3.6,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "vietnamese_restaurant",
+  "types": [
+   "vietnamese_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-005",
+  "name": "Gnocchi Club",
+  "lat": 49.280971,
+  "lng": -123.09473,
+  "address": "126 Fake St, Chinatown, Vancouver, BC",
+  "rating": 3.9,
+  "rating_count": 35,
+  "price_level": 3,
+  "primary_type": "italian_restaurant",
+  "types": [
+   "italian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-006",
+  "name": "Taco Tide",
+  "lat": 49.261383,
+  "lng": -123.107101,
+  "address": "3227 Fake St, Mount Pleasant, Vancouver, BC",
+  "rating": 4.5,
+  "rating_count": 120,
+  "price_level": 1,
+  "primary_type": "mexican_restaurant",
+  "types": [
+   "mexican_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-007",
+  "name": "Seoul Spoon",
+  "lat": 49.266959,
+  "lng": -123.170538,
+  "address": "1508 Fake St, Kitsilano, Vancouver, BC",
+  "rating": 3.7,
+  "rating_count": 900,
+  "price_level": 2,
+  "primary_type": "korean_restaurant",
+  "types": [
+   "korean_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-008",
+  "name": "The Dumpling Bar",
+  "lat": 49.264221,
+  "lng": -123.07043,
+  "address": "611 Fake St, Commercial Drive, Vancouver, BC",
+  "rating": 3.9,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "chinese_restaurant",
+  "types": [
+   "chinese_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-009",
+  "name": "Sushi Koi",
+  "lat": 49.261018,
+  "lng": -123.127684,
+  "address": "3726 Fake St, Fairview, Vancouver, BC",
+  "rating": 3.7,
+  "rating_count": 120,
+  "price_level": 3,
+  "primary_type": "sushi_restaurant",
+  "types": [
+   "sushi_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-010",
+  "name": "Brunch Republic",
+  "lat": 49.285155,
+  "lng": -123.128875,
+  "address": "1033 Fake St, Downtown, Vancouver, BC",
+  "rating": 4.4,
+  "rating_count": 120,
+  "price_level": 2,
+  "primary_type": "brunch_restaurant",
+  "types": [
+   "brunch_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-011",
+  "name": "Curry Monsoon",
+  "lat": 49.288264,
+  "lng": -123.102403,
+  "address": "1656 Fake St, Gastown, Vancouver, BC",
+  "rating": 4.9,
+  "rating_count": 120,
+  "price_level": 2,
+  "primary_type": "indian_restaurant",
+  "types": [
+   "indian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-012",
+  "name": "Fig & Olive Oil",
+  "lat": 49.279409,
+  "lng": -123.127672,
+  "address": "1555 Fake St, Yaletown, Vancouver, BC",
+  "rating": 4.2,
+  "rating_count": 35,
+  "price_level": 3,
+  "primary_type": "mediterranean_restaurant",
+  "types": [
+   "mediterranean_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-013",
+  "name": "Burger Foundry",
+  "lat": 49.288422,
+  "lng": -123.130696,
+  "address": "392 Fake St, West End, Vancouver, BC",
+  "rating": 4.5,
+  "rating_count": 900,
+  "price_level": 1,
+  "primary_type": "hamburger_restaurant",
+  "types": [
+   "hamburger_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-014",
+  "name": "Slice Theory",
+  "lat": 49.28031,
+  "lng": -123.104893,
+  "address": "1993 Fake St, Chinatown, Vancouver, BC",
+  "rating": 4.4,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "pizza_restaurant",
+  "types": [
+   "pizza_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-015",
+  "name": "Green Bowl",
+  "lat": 49.268405,
+  "lng": -123.097513,
+  "address": "999 Fake St, Mount Pleasant, Vancouver, BC",
+  "rating": 4.0,
+  "rating_count": 2100,
+  "price_level": 2,
+  "primary_type": "vegan_restaurant",
+  "types": [
+   "vegan_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-016",
+  "name": "Oyster Lane",
+  "lat": 49.27162,
+  "lng": -123.175993,
+  "address": "3466 Fake St, Kitsilano, Vancouver, BC",
+  "rating": 4.0,
+  "rating_count": 8,
+  "price_level": 4,
+  "primary_type": "seafood_restaurant",
+  "types": [
+   "seafood_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-017",
+  "name": "Banh Mi Bros",
+  "lat": 49.268514,
+  "lng": -123.077509,
+  "address": "3840 Fake St, Commercial Drive, Vancouver, BC",
+  "rating": 4.6,
+  "rating_count": 900,
+  "price_level": 1,
+  "primary_type": "sandwich_shop",
+  "types": [
+   "sandwich_shop",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-018",
+  "name": "Izakaya Hoshi",
+  "lat": 49.261276,
+  "lng": -123.127202,
+  "address": "1720 Fake St, Fairview, Vancouver, BC",
+  "rating": 4.7,
+  "rating_count": 2100,
+  "price_level": 3,
+  "primary_type": "japanese_restaurant",
+  "types": [
+   "japanese_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-019",
+  "name": "Shawarma Street",
+  "lat": 49.279879,
+  "lng": -123.125261,
+  "address": "2399 Fake St, Downtown, Vancouver, BC",
+  "rating": 4.2,
+  "rating_count": 900,
+  "price_level": 1,
+  "primary_type": "middle_eastern_restaurant",
+  "types": [
+   "middle_eastern_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-020",
+  "name": "Pasta Nonna",
+  "lat": 49.285015,
+  "lng": -123.101839,
+  "address": "1735 Fake St, Gastown, Vancouver, BC",
+  "rating": 3.9,
+  "rating_count": 120,
+  "price_level": 2,
+  "primary_type": "italian_restaurant",
+  "types": [
+   "italian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-021",
+  "name": "Hot Pot Haven",
+  "lat": 49.28137,
+  "lng": -123.121429,
+  "address": "472 Fake St, Yaletown, Vancouver, BC",
+  "rating": 3.9,
+  "rating_count": 8,
+  "price_level": 3,
+  "primary_type": "chinese_restaurant",
+  "types": [
+   "chinese_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-022",
+  "name": "Crispy Bird",
+  "lat": 49.281834,
+  "lng": -123.14012,
+  "address": "2887 Fake St, West End, Vancouver, BC",
+  "rating": 4.7,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "fast_food_restaurant",
+  "types": [
+   "fast_food_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-023",
+  "name": "Tapas Rosa",
+  "lat": 49.278517,
+  "lng": -123.098574,
+  "address": "2017 Fake St, Chinatown, Vancouver, BC",
+  "rating": 4.4,
+  "rating_count": 900,
+  "price_level": 3,
+  "primary_type": "spanish_restaurant",
+  "types": [
+   "spanish_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-024",
+  "name": "Bistro Marcel",
+  "lat": 49.263939,
+  "lng": -123.092936,
+  "address": "2886 Fake St, Mount Pleasant, Vancouver, BC",
+  "rating": 3.9,
+  "rating_count": 2100,
+  "price_level": 4,
+  "primary_type": "french_restaurant",
+  "types": [
+   "french_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-025",
+  "name": "Ramen Ichigo",
+  "lat": 49.273017,
+  "lng": -123.163484,
+  "address": "3248 Fake St, Kitsilano, Vancouver, BC",
+  "rating": 3.7,
+  "rating_count": 2100,
+  "price_level": 2,
+  "primary_type": "ramen_restaurant",
+  "types": [
+   "ramen_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-026",
+  "name": "Lotus Thai Kitchen",
+  "lat": 49.267222,
+  "lng": -123.075853,
+  "address": "113 Fake St, Commercial Drive, Vancouver, BC",
+  "rating": 4.0,
+  "rating_count": 2100,
+  "price_level": 2,
+  "primary_type": "thai_restaurant",
+  "types": [
+   "thai_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-027",
+  "name": "Smoke Pit BBQ",
+  "lat": 49.260661,
+  "lng": -123.129989,
+  "address": "831 Fake St, Fairview, Vancouver, BC",
+  "rating": 4.7,
+  "rating_count": 900,
+  "price_level": 2,
+  "primary_type": "barbecue_restaurant",
+  "types": [
+   "barbecue_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-028",
+  "name": "Poke Wave",
+  "lat": 49.287146,
+  "lng": -123.124328,
+  "address": "2717 Fake St, Downtown, Vancouver, BC",
+  "rating": 4.8,
+  "rating_count": 900,
+  "price_level": 2,
+  "primary_type": "hawaiian_restaurant",
+  "types": [
+   "hawaiian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-029",
+  "name": "Greek Corner",
+  "lat": 49.279834,
+  "lng": -123.104275,
+  "address": "2309 Fake St, Gastown, Vancouver, BC",
+  "rating": 4.4,
+  "rating_count": 900,
+  "price_level": 2,
+  "primary_type": "greek_restaurant",
+  "types": [
+   "greek_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-030",
+  "name": "Dosa Express",
+  "lat": 49.276587,
+  "lng": -123.121805,
+  "address": "558 Fake St, Yaletown, Vancouver, BC",
+  "rating": 4.8,
+  "rating_count": 120,
+  "price_level": 1,
+  "primary_type": "indian_restaurant",
+  "types": [
+   "indian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-031",
+  "name": "Kimchi House",
+  "lat": 49.28998,
+  "lng": -123.137465,
+  "address": "337 Fake St, West End, Vancouver, BC",
+  "rating": 4.7,
+  "rating_count": 35,
+  "price_level": 2,
+  "primary_type": "korean_restaurant",
+  "types": [
+   "korean_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-032",
+  "name": "Dim Sum Palace",
+  "lat": 49.285263,
+  "lng": -123.107758,
+  "address": "2090 Fake St, Chinatown, Vancouver, BC",
+  "rating": 4.7,
+  "rating_count": 8,
+  "price_level": 2,
+  "primary_type": "chinese_restaurant",
+  "types": [
+   "chinese_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-033",
+  "name": "Arepa Café",
+  "lat": 49.263692,
+  "lng": -123.107636,
+  "address": "2802 Fake St, Mount Pleasant, Vancouver, BC",
+  "rating": 4.9,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "latin_american_restaurant",
+  "types": [
+   "latin_american_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-034",
+  "name": "Waffle Works",
+  "lat": 49.264382,
+  "lng": -123.167502,
+  "address": "2584 Fake St, Kitsilano, Vancouver, BC",
+  "rating": 4.8,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "breakfast_restaurant",
+  "types": [
+   "breakfast_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-035",
+  "name": "Cedar & Sage",
+  "lat": 49.274847,
+  "lng": -123.065105,
+  "address": "2925 Fake St, Commercial Drive, Vancouver, BC",
+  "rating": 4.9,
+  "rating_count": 35,
+  "price_level": 4,
+  "primary_type": "fine_dining_restaurant",
+  "types": [
+   "fine_dining_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ },
+ {
+  "id": "fixture-036",
+  "name": "Falafel Friends",
+  "lat": 49.262288,
+  "lng": -123.12691,
+  "address": "1629 Fake St, Fairview, Vancouver, BC",
+  "rating": 4.5,
+  "rating_count": 340,
+  "price_level": 1,
+  "primary_type": "vegetarian_restaurant",
+  "types": [
+   "vegetarian_restaurant",
+   "restaurant",
+   "food"
+  ],
+  "maps_uri": null,
+  "business_status": "OPERATIONAL"
+ }
+]
