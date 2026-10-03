@@ -3,13 +3,20 @@ name = "munch"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+  "asyncpg>=0.31.0",
   "httpx>=0.27",
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "asyncpg-stubs>=0.31.3",
+]
 
 [build-system]
 requires = ["hatchling"]
