@@ -10,6 +10,8 @@ export const LIGHT = {
   shadow: '#161616', // the hard shadow behind chunky boxes
   softText: '#4A4220', // quieter words
   accent: '#D93A21', // the red ring and the stickers
+  yes: '#2E9E5B', // green glow when you swipe a card to the right
+  nope: '#D93A21', // red glow when you swipe a card to the left
   dot: '#161616', // the dot in the middle of the ring
   onAccent: '#FFFFFF', // words that sit on the accent color
   primary: '#161616', // the big main buttons
@@ -25,6 +27,8 @@ export const DARK = {
   shadow: '#000000',
   softText: '#B9A898',
   accent: '#FF5A3C',
+  yes: '#6FCF8E',
+  nope: '#FF5A3C',
   dot: '#E8B04B',
   onAccent: '#160F0D',
   primary: '#FF5A3C',
