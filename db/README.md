@@ -45,10 +45,27 @@ A brand-new empty DB doesn't need this; plain `migrate` runs everything from `00
 
 ## Add a migration
 
-1. Create the next number: `migrations/004_short_name.sql` (lowercase, underscores).
-2. Write plain SQL. Don't add `BEGIN`/`COMMIT`; the runner wraps the file in a transaction.
-3. Run `uv run python -m munch.db.migrate`.
-4. Commit the file in the same PR as the code that needs it, and tell the team to migrate.
+1. `git pull` and run `--status` so you know the latest number and that the DB is up to date.
+2. Create the next number: `migrations/004_short_name.sql` (lowercase, underscores).
+3. Write plain SQL. Don't add `BEGIN`/`COMMIT`; the runner wraps the file in a transaction.
+   That also rules out statements Postgres won't run inside a transaction:
+   - `CREATE INDEX CONCURRENTLY`: use a plain `CREATE INDEX`.
+   - Continuous aggregates: end the view with `WITH NO DATA` (as `002` does), and don't call
+     `refresh_continuous_aggregate` in a migration; the refresh policy fills it in.
+4. Check, then apply:
+   ```bash
+   uv run python -m munch.db.migrate --status   # your file shows as pending
+   uv run python -m munch.db.migrate
+   uv run python -m munch.db.migrate --status   # now everything shows as applied
+   ```
+   `--status` output looks like:
+   ```
+     baselined 001_init  (2026-10-03 17:05)
+     applied   002_rooms_swipe_events  (2026-10-03 17:05)
+     pending   004_short_name
+   ```
+5. Commit the file in the same PR as the code that needs it, and tell the team it's applied
+   (everyone shares one DB, so nobody else needs to run it).
 
 ## Rules
 
@@ -67,3 +84,4 @@ A brand-new empty DB doesn't need this; plain `migrate` runs everything from `00
 | `... was edited after it was applied` | Undo your edit to that file and make a new migration |
 | `... is applied but its file is missing` | Someone deleted or renamed an applied file; restore it |
 | `expected NNN_lowercase_name.sql` | A file in `migrations/` has the wrong name format |
+| `... cannot run inside a transaction block` | See step 3 of "Add a migration": drop `CONCURRENTLY`, or add `WITH NO DATA` to a continuous aggregate |
