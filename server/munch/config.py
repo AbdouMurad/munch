@@ -26,10 +26,11 @@ class Settings(BaseSettings):
     # Ranking (§8), tune these during the hackathon
     rating_prior_mean: float = 4.2
     rating_prior_weight: int = 50
-    weight_rating: float = 0.55
-    weight_distance: float = 0.35
-    weight_munch: float = 0.10
-    jitter: float = 0.12
+    popular_reviews: int = 2000  # review count where the popularity score maxes out
+    weight_rating: float = 0.5
+    weight_popularity: float = 0.2
+    weight_distance: float = 0.3
+    jitter: float = 0.05
     deck_size: int = 80
     min_candidates: int = 15
 

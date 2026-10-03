@@ -12,7 +12,7 @@
 |---|---|---|
 | **Main (general)** | A complete, demo-able product: create room → join → swipe → match | everything |
 | **Best use of Python** | The *entire* backend is Python: async FastAPI, WebSockets, Pydantic v2 contracts, asyncpg, an adaptive geospatial crawler, and a ranking engine (seeded RNG, Bayesian smoothing). Typed end to end (`mypy --strict`), `uv` managed, `pytest` tested | `server/` |
-| **Best use of Tiger Data** | Tiger Cloud Postgres with PostGIS for the per-room candidate query, a TimescaleDB **hypertable** for every swipe, a **continuous aggregate** that feeds crowd popularity back into ranking, and a live stats page | §4, §8, §9 |
+| **Best use of Tiger Data** | Tiger Cloud Postgres with PostGIS for the per-room candidate query (built). *Planned, not built:* a TimescaleDB **hypertable** for every swipe, a **continuous aggregate** that feeds crowd popularity back into ranking, and a live stats page | §4, §8, §9 |
 | **Best design** | Mobile-first swipe UI, motion design, and a **AirDrop-first room join** (§3.1) | `web/` |
 
 Keep these in mind when making tradeoffs. For example, don't reach for a Node library or skip the Tiger features to save time.
@@ -131,13 +131,13 @@ munch/
 
 ## 4. Data model (Tiger Data / Postgres)
 
-`db/migrations/001_init.sql`:
+**Current schema** (`db/migrations/001_init.sql`, applied on Tiger): restaurant data only. The
+crawl and room state live outside the DB for now (crawl progress in a local resume file, rooms in
+memory, §6).
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS timescaledb;  -- already enabled on Tiger Cloud
 
--- Restaurants (filled by ingest)
 CREATE TABLE restaurants (
   id              text PRIMARY KEY,                 -- Google place id
   name            text NOT NULL,
@@ -147,91 +147,33 @@ CREATE TABLE restaurants (
   address         text,
   rating          real,                             -- 1.0–5.0, nullable
   rating_count    integer NOT NULL DEFAULT 0,
-  price_level     smallint,                         -- 0–4, nullable
+  price_level     smallint,                         -- 0–4, nullable (~16% have none)
   primary_type    text,                             -- e.g. 'ramen_restaurant'
   types           text[] NOT NULL DEFAULT '{}',
   photo_name      text,                             -- 'places/{id}/photos/{ref}' for the photo proxy
   maps_uri        text,
   business_status text,                             -- OPERATIONAL | CLOSED_TEMPORARILY | ...
-  opening_hours   jsonb,
+  opening_hours   jsonb,                            -- Google regularOpeningHours, used by open_now
   fetched_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX restaurants_location_gix ON restaurants USING gist (location);
-
--- Crawl bookkeeping, so ingest can resume and we can audit it
-CREATE TABLE ingest_cells (
-  id            bigserial PRIMARY KEY,
-  parent_id     bigint REFERENCES ingest_cells(id),
-  depth         smallint NOT NULL,
-  min_lat       double precision NOT NULL,
-  min_lng       double precision NOT NULL,
-  max_lat       double precision NOT NULL,
-  max_lng       double precision NOT NULL,
-  radius_m      integer NOT NULL,
-  status        text NOT NULL DEFAULT 'pending',  -- pending | done | split | dense | failed
-  result_count  integer,
-  error         text,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  completed_at  timestamptz
-);
-CREATE INDEX ingest_cells_status_idx ON ingest_cells (status);
-
--- Rooms (written for durability/analytics; live state is in memory, see §6)
-CREATE TABLE rooms (
-  id                     uuid PRIMARY KEY,
-  code                   char(6) NOT NULL UNIQUE,
-  status                 text NOT NULL,           -- lobby | swiping | matched | exhausted | closed
-  center_lat             double precision NOT NULL,
-  center_lng             double precision NOT NULL,
-  radius_m               integer NOT NULL,
-  filters                jsonb NOT NULL DEFAULT '{}',
-  seed                   bigint NOT NULL,
-  matched_restaurant_id  text REFERENCES restaurants(id),
-  created_at             timestamptz NOT NULL DEFAULT now(),
-  started_at             timestamptz,
-  ended_at               timestamptz
-);
-
-CREATE TABLE room_members (
-  id            uuid PRIMARY KEY,
-  room_id       uuid NOT NULL REFERENCES rooms(id),
-  display_name  text NOT NULL,
-  is_host       boolean NOT NULL DEFAULT false,
-  joined_at     timestamptz NOT NULL DEFAULT now(),
-  left_at       timestamptz
-);
-
--- Swipes: a Timescale hypertable (time-series event log)
-CREATE TABLE swipes (
-  swiped_at      timestamptz NOT NULL DEFAULT now(),
-  room_id        uuid NOT NULL,
-  member_id      uuid NOT NULL,
-  restaurant_id  text NOT NULL,
-  liked          boolean NOT NULL
-);
-SELECT create_hypertable('swipes', by_range('swiped_at'));
-CREATE INDEX swipes_room_idx ON swipes (room_id, swiped_at DESC);
--- Deduplication (one swipe per member per card) is enforced by the server, not a
--- unique constraint, because unique indexes on hypertables must include swiped_at.
-
--- Continuous aggregate: "munch popularity" across all rooms
-CREATE MATERIALIZED VIEW restaurant_swipe_stats_daily
-WITH (timescaledb.continuous) AS
-SELECT time_bucket('1 day', swiped_at) AS bucket,
-       restaurant_id,
-       count(*) FILTER (WHERE liked) AS likes,
-       count(*)                       AS swipes
-FROM swipes
-GROUP BY bucket, restaurant_id;
-
-SELECT add_continuous_aggregate_policy('restaurant_swipe_stats_daily',
-  start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour',
-  schedule_interval => INTERVAL '15 minutes');
+CREATE INDEX restaurants_business_status_idx ON restaurants (business_status);
 ```
 
-**Tiger track pitch.** PostGIS `ST_DWithin` produces the candidate set for each room. Every swipe is a time-series event in a hypertable. A continuous aggregate turns all those swipes into a crowd-sourced "munch score" that feeds back into ranking (§8). The stats page (§9) shows swipes per minute and the most-liked spots, queried live from the hypertable with `time_bucket`. Consider also enabling compression on old swipe chunks and mention it in the pitch.
+**Data on Tiger** (crawl paused at the request cap, §7): 3,783 restaurants across Vancouver and
+Burnaby, 3,618 operational. 84% have a price level, 95% a rating, 90% opening hours.
 
-Use `asyncpg` with raw SQL (no ORM) so the Tiger/PostGIS features are visible in the code. Register a codec or pass geography as `ST_MakePoint(lng, lat)::geography`.
+**Planned, not built yet.** Each goes in its own new migration (`002_...`, never edit 001):
+- **Users:** accounts are a non-goal for the MVP (§1); add a table when that changes.
+- **Swipes (Tiger track):** a `swipes` hypertable (`swiped_at, room_id, member_id, restaurant_id,
+  liked`, `create_hypertable('swipes', by_range('swiped_at'))`), a `restaurant_swipe_stats_daily`
+  continuous aggregate (likes and swipes per restaurant per day), and optionally compression on
+  old chunks. That is what the `/stats` route (`StatsResponse` in `models.py`) and the ranking's
+  crowd-popularity term were designed around. If rooms need to be durable, `rooms` and
+  `room_members` tables come with it.
+
+Use `asyncpg` with raw SQL (no ORM) so the Tiger/PostGIS features are visible in the code. Pass
+geography as `ST_MakePoint(lng, lat)::geography` (longitude first).
 
 ---
 
@@ -244,9 +186,14 @@ Use `asyncpg` with raw SQL (no ORM) so the Tiger/PostGIS features are visible in
 ```python
 RoomStatus = Literal["lobby", "swiping", "matched", "exhausted", "closed"]
 
-class Filters(BaseModel):
+class Filters(BaseModel):                   # all optional; how each applies: §8.1
     price_levels: list[int] | None = None   # subset of 0–4; None/empty = any
+    include_unknown_price: bool = True      # with price_levels set, keep places with no price
+    include_types: list[str] = []           # any of, e.g. ["sushi_restaurant"]; empty = any
     exclude_types: list[str] = []           # e.g. ["fast_food_restaurant"]
+    min_rating: float | None = None         # 1–5
+    min_reviews: int = 0
+    open_now: bool = False                  # Vancouver time; drops places with no hours
 
 class Member(BaseModel):
     id: str
@@ -376,133 +323,139 @@ class LiveRoom:
 
 ---
 
-## 7. Ingest: Vancouver grid crawler
+## 7. Ingest: grid crawler
 
-Run it as a CLI: `uv run python -m munch.ingest [--dry-run] [--max-requests 200] [--bbox city|metro]`.
+Code: `server/munch/ingest/`. **Run instructions, flags and cost notes are in
+[server/munch/ingest/README.md](../server/munch/ingest/README.md).** Only `ingest/` (and the photo
+proxy) may call Google.
 
-Write it as an `asyncio` + `httpx.AsyncClient` program with a small concurrency limit (a semaphore of about 5). That fits the "best use of Python" angle and makes the crawl fast. Use `tenacity` or a hand-rolled backoff for retries.
+```bash
+cd server && set -a && source ../.env && set +a
+uv run python -m munch.ingest --dry-run                         # grid size, no calls
+uv run python -m munch.ingest --bbox vanburnaby --max-requests 1000
+uv run python -m munch.ingest.search --lat 49.2827 --lng -123.1207   # one search, no DB
+```
 
-### 7.1 The constraint we're working around
-Places API (New) `searchNearby` returns **at most 20 results** and has **no pagination**. If a query comes back with exactly 20, there are probably more places in that circle that we missed. So we do an adaptive quadtree: start with a coarse grid, and split any saturated cell into 4 smaller cells.
+### 7.1 The constraint
+Places API (New) `searchNearby` returns **at most 20 results** with **no pagination**, and in
+practice **trims some after the cap**: a saturated circle can come back with 19. So any result of
+**18 or more** is treated as saturated (found by testing at Metrotown, where a 915 m search returned
+19 while smaller circles inside it found dozens more).
 
 ### 7.2 Algorithm
-
-```
-BBOXES = {
-  city:  (min_lat 49.198, min_lng -123.225, max_lat 49.317, max_lng -123.023),  # City of Vancouver
-  metro: (min_lat 49.100, min_lng -123.270, max_lat 49.380, max_lng -122.850),  # + Burnaby, Richmond, North Van
-}
-INITIAL_CELL_M = 1500      # ~10×10 grid over the city
-MIN_RADIUS_M   = 75        # stop splitting below this
-SATURATION     = 20        # == maxResultCount
-
-seed: tile bbox into INITIAL_CELL_M squares → insert as ingest_cells(status='pending', depth=0)
-      (skip seeding if pending/done cells already exist → resumable)
-
-loop while a pending cell exists and requests < MAX_REQUESTS:
-  cell   = next pending (lowest depth first)
-  center = cell midpoint
-  radius = half-diagonal of the cell (so the circle covers the whole square)
-  places = search_nearby(center, radius)
-  upsert places into restaurants (ON CONFLICT (id) DO UPDATE)
-  if len(places) >= SATURATION and radius/2 >= MIN_RADIUS_M:
-      mark cell 'split'; insert 4 child quadrants as 'pending', depth+1
-  elif len(places) >= SATURATION:
-      mark cell 'dense'   # log it; acceptable loss
-  else:
-      mark cell 'done'
-  retry 429/5xx with backoff, mark 'failed' after 3 tries
-```
-
-Use these rough conversions at Vancouver's latitude: 1° lat ≈ 111,200 m and 1° lng ≈ 72,600 m. (Or use `math.cos(math.radians(lat))` to compute it.) Keep the cell geometry in pure functions (`tile_bbox`, `split_cell`, `cell_radius_m`) so it's easy to unit test without hitting Google.
-
-Circles that cover a square overlap their neighbours, so the same place will come back more than once. The upsert takes care of that.
+- **Boxes** (`ingest/grid.py`, south-west and north-east corners):
+  `test` Metrotown 49.222,-123.012 → 49.232,-122.992 · `city` 49.198,-123.225 → 49.317,-123.023 ·
+  **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850.
+- Tile the box into 1,500 m squares (187 for `vanburnaby`). Search each with the smallest circle
+  covering it (half the diagonal), `rankPreference: DISTANCE`, 5 requests in flight.
+- **Saturated cell → density-sized split.** Results are nearest-first, so the distance to the
+  farthest result gives local density; the cell is split into a grid sized for ~12 places per
+  child, **capped at 3×3** per split (density isn't uniform; an 8×8 cap wasted calls on empty
+  residential edges). Children wholly inside 90% of the covered radius are skipped.
+- Below a **40 m** search radius a still-saturated cell is logged as dense (mall food courts).
+- Every result is upserted by place id (`ON CONFLICT (id) DO UPDATE`), so overlapping circles never
+  duplicate rows; `RETURNING (xmax = 0)` reports which were new.
+- Progress is saved to `server/crawl_state.json` after every response. Re-running the same
+  command **resumes** without re-paying; the file is deleted when the crawl completes. `--fresh`
+  starts over.
+- Pure geometry (`tile_bbox`, `split_dims`, `split_cell`, `inside_disk`) is unit tested.
 
 ### 7.3 Request
-
-```http
-POST https://places.googleapis.com/v1/places:searchNearby
-X-Goog-Api-Key: $GOOGLE_PLACES_API_KEY
-X-Goog-FieldMask: places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.primaryType,places.types,places.photos,places.googleMapsUri,places.businessStatus,places.regularOpeningHours
-
-{
-  "includedTypes": ["restaurant"],
-  "maxResultCount": 20,
-  "rankPreference": "DISTANCE",
-  "locationRestriction": { "circle": { "center": { "latitude": 49.28, "longitude": -123.12 }, "radius": 1060.0 } }
-}
-```
-
-- `rankPreference: DISTANCE` keeps the 20 *closest* results, so the subdivided children fill in what got cut off.
-- `priceLevel` comes back as an enum (`PRICE_LEVEL_MODERATE`, ...). Map it to 0–4.
-- Store only `photos[0].name` in `photo_name`.
+`POST https://places.googleapis.com/v1/places:searchNearby` with `includedTypes: ["restaurant"]`,
+`maxResultCount: 20`, `rankPreference: DISTANCE`, a circle `locationRestriction`, and the field mask
+in `ingest/places.py` (id, name, location, address, rating, review count, price level, types,
+photos, maps link, business status, opening hours). `priceLevel` enums map to 0–4; only
+`photos[0].name` is stored.
 
 ### 7.4 Cost and ToS guardrails ⚠️
-- Fields like `rating`, `userRatingCount`, `priceLevel`, and `regularOpeningHours` push each request into a **more expensive SKU**. Check current Places pricing before running a full crawl.
-- **Always run `--dry-run` first.** It prints the initial cell count and an estimate without calling Google. `--max-requests` is a hard cap that defaults to 200.
-- Ingest **once** into the shared Tiger DB. Teammates develop against that DB, or against `db/seed/fixtures.sql`. Don't re-crawl from your own machine.
-- Photos: `GET /api/photos/{id}` calls `https://places.googleapis.com/v1/{photo_name}/media?maxWidthPx=800&key=...` from the server, so the API key never reaches the client. Cache the bytes (an in-memory LRU, or on disk).
-- Google's terms restrict long-term caching of Places content. Place IDs are exempt. That's fine for a hackathon demo, but call it out if anyone asks.
+- Rating, review count, price level and hours put every call in the **Enterprise** Nearby Search
+  SKU. Ranking needs those fields, and per-place detail calls would cost more, so this is the
+  cheapest way to get them. Check current pricing and set a budget alert before a big run.
+- The first `vanburnaby` run used 1,000 calls for 3,783 restaurants and stopped at the cap with
+  420 cells queued; finishing it should take roughly 450–600 more.
+- Always `--dry-run` first; `--max-requests` is a hard cap (default 200).
+- Crawl **once** into the shared Tiger DB. Teammates use that DB; don't re-crawl from your machine.
+- Photos: `GET /api/photos/{id}` should call `https://places.googleapis.com/v1/{photo_name}/media?maxWidthPx=800&key=...`
+  server-side so the key never reaches the client. Cache the bytes.
+- Google's terms restrict long-term caching of Places content (place IDs are exempt). Fine for a
+  hackathon demo; say so if asked.
 
 ---
 
 ## 8. Ranking
 
-Ranking runs once per room when the host presses Start (`server/munch/ranking`). Keep scoring as pure functions so it's trivially testable.
+Code: `server/munch/ranking/`. **`deck.py`** builds the deck, **`scoring.py`** holds the pure
+scoring, shuffle and variety functions, **`hours.py`** the open-now check. Weights live in
+`config.py` (§10).
 
-### 8.1 Candidates (SQL)
+**Wiring.** `main.py` uses `make_deck_builder(db_pool, settings)` when `DATABASE_URL` is set, and
+falls back to `rooms/fixture_deck.py` without a DB. Both match the `DeckBuilder` signature
+`(center: LatLng, radius_m: int, filters: Filters, seed: int) -> list[Card]`, so the room code
+doesn't care which one runs.
 
-```sql
-SELECT r.*,
-       ST_Distance(r.location, ST_MakePoint($2, $1)::geography) AS distance_m,
-       COALESCE(s.likes, 0)  AS munch_likes,
-       COALESCE(s.swipes, 0) AS munch_swipes
-FROM restaurants r
-LEFT JOIN (
-  SELECT restaurant_id, sum(likes) AS likes, sum(swipes) AS swipes
-  FROM restaurant_swipe_stats_daily
-  WHERE bucket > now() - INTERVAL '30 days'
-  GROUP BY restaurant_id
-) s ON s.restaurant_id = r.id
-WHERE ST_DWithin(r.location, ST_MakePoint($2, $1)::geography, $3)
-  AND r.business_status = 'OPERATIONAL'
-  AND ($4::smallint[] IS NULL OR r.price_level = ANY($4))
-  AND NOT (r.types && $5::text[])
-LIMIT 500;
+Try it from the command line (all `Filters` fields have flags):
+
+```bash
+cd server
+uv run python -m munch.ranking --lat 49.2276 --lng -123.0003 --count 15
+uv run python -m munch.ranking --price 1 2 --known-price --exclude fast_food_restaurant --min-rating 4.5
+uv run python -m munch.ranking --type sushi_restaurant ramen_restaurant --open-now --min-reviews 200
 ```
 
-(`$1` = lat, `$2` = lng, `$3` = radius in metres. PostGIS takes longitude first.)
+### 8.1 Candidates and filters (SQL)
+Up to 1,000 nearest operational restaurants within the radius (PostGIS `ST_DWithin` plus KNN
+`ORDER BY location <-> point`), with every `Filters` field (§5.1) except `open_now` applied in
+SQL:
+
+| Filter | Rule |
+|---|---|
+| radius (`radiusM` on the room) | `ST_DWithin(location, point, radius)` |
+| `priceLevels` | `price_level = ANY(...)`; places with no price are kept unless `includeUnknownPrice` is false |
+| `includeTypes` | the place's `types` overlap the list (any of). Empty = any |
+| `excludeTypes` | no overlap with the list |
+| `minRating` | `rating >= minRating` (unrated places drop out) |
+| `minReviews` | `rating_count >= minReviews` |
+| `openNow` | checked in Python against `opening_hours` at the current Vancouver time; places with no hours drop out |
+
+Type values are Google's: `sushi_restaurant`, `ramen_restaurant`, `pizza_restaurant`,
+`vegan_restaurant`, `fast_food_restaurant`, `cafe`, `bakery`, and so on. The most common in our
+data are `restaurant` (generic), `chinese_restaurant`, `pizza_restaurant`, `japanese_restaurant` and
+`fast_food_restaurant`.
+
+If fewer than `min_candidates` (15) match, the radius doubles, up to 3 times.
 
 ### 8.2 Score
 
 ```python
 # 1. Bayesian-smoothed rating: a 5.0 with 3 reviews shouldn't beat a 4.6 with 2,000.
-C, m = 4.2, 50            # prior mean (≈ Vancouver avg), prior weight (reviews)
-R = rating if rating is not None else C
-v = rating_count
-bayes = (v / (v + m)) * R + (m / (v + m)) * C
-rating_score = clamp((bayes - 3.5) / 1.5, 0, 1)         # 3.5★→0, 5★→1
+bayes = (v * R + m * C) / (v + m)            # C = 4.2 prior mean, m = 50 prior reviews
+rating_score = clamp((bayes - 3.5) / 1.5)    # 3.5★ → 0, 5★ → 1
 
-# 2. Distance: smooth decay
-distance_score = math.exp(-distance_m / (radius_m / 2))
+# 2. Popularity: lots of reviews is rewarded on its own, log scale, maxing at 2,000
+popularity_score = clamp(log1p(v) / log1p(2000))
 
-# 3. Munch popularity (Tiger): like rate across all rooms, Laplace-smoothed
-munch_score = (munch_likes + 1) / (munch_swipes + 2)    # 0.5 when unknown
+# 3. Distance: 1 at the center, ~0.37 at half the radius, ~0.14 at the edge
+distance_score = exp(-distance_m / (radius_m / 2))
 
-# 4. Combine + jitter
-base  = 0.55 * rating_score + 0.35 * distance_score + 0.10 * munch_score
-score = base + rng.uniform(-0.12, 0.12)                 # rng = random.Random(room.seed)
+base  = 0.5 * rating_score + 0.2 * popularity_score + 0.3 * distance_score
+score = base + rng.uniform(-0.05, 0.05)      # rng = random.Random(seed)
 ```
 
-Put the weights and jitter in `config.py` so they're easy to tune during the hackathon. Optionally use `numpy` for scoring 500 rows at once, but it isn't required.
+The jitter is deliberately **bounded**: a place can only overtake places within 0.1 of its own
+score, so the best places stay near the front but the order changes per seed. (Unbounded Gumbel
+noise was tried first; with ~1,000 candidates at Metrotown it let a 0.64 land 2nd, ahead of a
+0.88.) When the swipes hypertable exists (§4), a crowd-popularity term from the continuous
+aggregate can join the sum.
 
 ### 8.3 Building the deck
-1. Sort by `score` descending.
-2. **Diversity pass:** walk the sorted list and, if a card has the same `primary_type` as either of the previous 2 cards, swap it with the next card that doesn't. This stops five ramen shops from showing up in a row.
-3. Keep the top **80** as the deck. Save `room.seed` so that a given room always produces the same deck (useful for reconnects and debugging).
-4. If there are fewer than 15 candidates, retry with radius × 2, up to 3 times.
-
-Use `random.Random(seed)`, never the global `random`, because the deck has to be reproducible. A test for that is a good one to write.
+1. Sort by jittered score.
+2. **Variety pass:** if a card's `primary_type` matches either of the previous 2, pull forward the
+   next card that doesn't. Generic types (`restaurant`, `food`, `meal_takeaway`) never count as a
+   repeat.
+3. Keep the top `deck_size` (80) and convert to `Card`. `photoUrl` is `/api/photos/{id}` when the
+   place has a photo.
+4. The same seed and data always give the same deck (tested), so `room.seed` reproduces a room's
+   deck. Use `random.Random(seed)`, never the global `random`.
 
 ---
 
@@ -536,6 +489,10 @@ VITE_MOCK=0
 
 Run the server with `uv run uvicorn munch.main:app --reload --port 8000`. Never commit `.env`. Share the Tiger connection string and the Google key over DMs.
 
+`DATABASE_URL` must include the password (`postgres://tsdbadmin:PASSWORD@...`); typing it at a psql prompt doesn't help the server or the crawler. With it set, the server deals real decks from Tiger; without it, it falls back to the fixture deck.
+
+Ranking knobs in `config.py` (override with env vars of the same name in upper case): `RATING_PRIOR_MEAN` 4.2, `RATING_PRIOR_WEIGHT` 50, `POPULAR_REVIEWS` 2000, `WEIGHT_RATING` 0.5, `WEIGHT_POPULARITY` 0.2, `WEIGHT_DISTANCE` 0.3, `JITTER` 0.05, `DECK_SIZE` 80, `MIN_CANDIDATES` 15.
+
 **Deploy (demo):** the web app goes on Vercel or Netlify, and it must be served over HTTPS (§3.1). The server needs a long-running host because of WebSockets and in-memory state, so Railway, Render, or Fly work and serverless functions don't. Run a single worker.
 
 ---
@@ -557,6 +514,25 @@ Each workstream owns its own directory and integrates through `models.py` and th
 - **M1 end-to-end on fixtures.** Create and join a room, start it, two browsers swipe, and a match fires.
 - **M2 real data.** Ingest has populated the city bbox, and ranking runs against the real data.
 - **M3 polish and demo.** Animations, the AirDrop share flow, the match screen, the no-match flow, the stats page, and deployment.
+
+### Status (2026-10-03)
+- **Done (C, D):** `restaurants` schema on Tiger; crawler with density splits and resume; 3,783
+  Vancouver + Burnaby restaurants loaded; real `build_deck` with all filters, wired into `main.py`.
+- **Done (B):** contract models, config, app skeleton, `RoomManager`, room REST routes, WebSocket
+  protocol, fixture deck.
+- **Changed from the original plan:** the schema is restaurants only (§4), `Filters` gained fields
+  (§5.1), the ranking swapped the swipe-based term for review-count popularity (§8.2). The frontend
+  lives in `frontend/` (Expo) rather than `web/`; §2, §5.4 and §9 still describe the old `web/`
+  plan for the frontend team to update.
+- **Open:**
+  - Finish the crawl (420 cells queued, §7.4).
+  - Photo proxy route `GET /api/photos/{id}`: `Card.photoUrl` already points at it, but it isn't
+    built, so images 404 for now.
+  - Decide whether to build the Tiger track (swipes hypertable, continuous aggregate, `/stats`,
+    §4). The demo script's stats page depends on it.
+  - `rooms/fixture_deck.py` only applies the price and exclude-type filters; fine for no-DB dev.
+  - Regenerate frontend types for the new `Filters` fields once a contracts script exists for
+    `frontend/`.
 
 ### Demo script
 The host creates a room and **AirDrops the link to two friends' iPhones** → they tap it and land in the lobby → swipe → two of them like the same place, and nothing happens because the third hasn't liked it yet → the third likes it → 🎉 a match appears on all three phones at once → open the stats page to show live swipes per minute coming out of the Tiger hypertable.
