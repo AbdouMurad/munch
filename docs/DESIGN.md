@@ -163,14 +163,23 @@ CREATE INDEX restaurants_business_status_idx ON restaurants (business_status);
 **Data on Tiger** (crawl paused at the request cap, §7): 3,783 restaurants across Vancouver and
 Burnaby, 3,618 operational. 84% have a price level, 95% a rating, 90% opening hours.
 
-**Planned, not built yet.** Each goes in its own new migration (`002_...`, never edit 001):
-- **Users:** accounts are a non-goal for the MVP (§1); add a table when that changes.
-- **Swipes (Tiger track):** a `swipes` hypertable (`swiped_at, room_id, member_id, restaurant_id,
-  liked`, `create_hypertable('swipes', by_range('swiped_at'))`), a `restaurant_swipe_stats_daily`
-  continuous aggregate (likes and swipes per restaurant per day), and optionally compression on
-  old chunks. That is what the `/stats` route (`StatsResponse` in `models.py`) and the ranking's
-  crowd-popularity term were designed around. If rooms need to be durable, `rooms` and
-  `room_members` tables come with it.
+**Drafted, not applied yet:**
+- **`002_rooms_swipe_events.sql` (Tiger track):** `rooms`, `room_members`, the anonymous
+  `swipe_events` hypertable (every swipe in every room, guests included), the
+  `restaurant_swipe_stats_daily` continuous aggregate behind `/stats` and the crowd-popularity
+  term, and compression on chunks older than 7 days.
+- **`003_accounts.sql`:** optional accounts (guests still play anonymously). `users`,
+  `auth_identities` (Google `sub` or email), hashed `sessions` and `email_login_codes` (no
+  passwords), `user_preferences` (hard filters merged into a room's `Filters` at Start, plus soft
+  `favorite_types`), `friendships` (one row per ordered pair, pending/accepted) and `blocks`,
+  `room_members.user_id`, and **`swipes`**: one row per signed-in swipe (`swipe_id` primary key,
+  `user_id, restaurant_id, liked, swiped_at`), never overwritten, used to learn what each user
+  likes and for the profile's Liked/Passed lists (latest row per restaurant).
+
+**Applying migrations:** `cd server && uv run python -m munch.db.migrate` runs every pending
+file in order, each in its own transaction, and records it in `schema_migrations` (version,
+name, checksum). `--status` lists applied/pending; `--baseline N` marks 001..N as applied
+without running them (for a DB that already had them). Editing an applied file is refused.
 
 Use `asyncpg` with raw SQL (no ORM) so the Tiger/PostGIS features are visible in the code. Pass
 geography as `ST_MakePoint(lng, lat)::geography` (longitude first).
