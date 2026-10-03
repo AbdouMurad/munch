@@ -1,98 +1,196 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { ChunkyButton } from '@/components/ui';
+import { useAppTheme } from '@/theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
+// A "screen" is just a function that returns what we want to show.
 export default function HomeScreen() {
+  // Grab our colors, and the switch that flips light/dark mode.
+  const { colors, isDark, toggleDark } = useAppTheme();
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* ---------- TOP: the app name and the light/dark button ---------- */}
+      <View style={styles.topBar}>
+        <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          onPress={toggleDark}
+          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
+          <Text style={[styles.themeButtonText, { color: colors.text }]}>
+            {isDark ? 'LIGHT' : 'DARK'}
+          </Text>
+        </Pressable>
+      </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+      {/* ---------- MIDDLE: the picture and the words ---------- */}
+      <View style={styles.middle}>
+        {/* The picture is made of 3 boxes stacked on top of each other. */}
+        <View style={styles.illustration}>
+          {/* Box 1: the card hiding at the back, tilted a little */}
+          <View
+            style={[
+              styles.card,
+              styles.backCard,
+              { backgroundColor: colors.card, borderColor: colors.text },
+            ]}
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+          {/* Box 2: the front card, tilted the other way */}
+          <View
+            style={[
+              styles.card,
+              styles.frontCard,
+              { backgroundColor: colors.card, borderColor: colors.text },
+            ]}>
+            {/* A ring (a circle with just a colored edge)... */}
+            <View style={[styles.ring, { borderColor: colors.accent }]}>
+              {/* ...with a dot inside it. */}
+              <View style={[styles.dot, { backgroundColor: colors.dot }]} />
+            </View>
+          </View>
+
+          {/* Box 3: the "OH YES" sticker in the top-right corner */}
+          <View
+            style={[styles.sticker, { backgroundColor: colors.accent, borderColor: colors.text }]}>
+            <Text style={[styles.stickerText, { color: colors.onAccent }]}>OH YES</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.title, { color: colors.text }]}>
+          Swipe together.{'\n'}Eat together.
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.softText }]}>
+          Everyone swipes the same spots. The place your group agrees on most wins.
+        </Text>
+      </View>
+
+      {/* ---------- BOTTOM: the buttons ---------- */}
+      <View style={styles.bottom}>
+        <ChunkyButton label="Start a game" primary onPress={() => router.push('/create')} />
+        <ChunkyButton label="Join with a code" onPress={() => router.push('/join')} />
+        <Text style={[styles.footnote, { color: colors.softText }]}>
+          Friends can join without an account
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
+// All the "how it looks" rules live down here.
+// Colors are NOT here, because they change with light/dark mode (see above).
+// Only sizes, spacing, and positions live here, because those never change.
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  topBar: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
-  heroSection: {
+  appName: {
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  themeButton: {
+    borderWidth: 2,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  themeButtonText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  // The middle part grows to fill the leftover space and centers its stuff.
+  middle: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
   },
+  illustration: {
+    width: 240,
+    height: 260,
+    marginBottom: 24,
+  },
+
+  // Both cards share this: rounded, with an outline.
+  card: {
+    position: 'absolute', // "absolute" lets boxes overlap each other
+    width: 200,
+    height: 220,
+    borderWidth: 2,
+    borderRadius: 18,
+  },
+  backCard: {
+    left: 20,
+    top: 30,
+    transform: [{ rotate: '8deg' }],
+  },
+  frontCard: {
+    left: 5,
+    top: 20,
+    transform: [{ rotate: '-5deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // A circle = a square with really round corners (borderRadius = half the size).
+  ring: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    borderWidth: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dot: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+  },
+  sticker: {
+    position: 'absolute',
+    top: 0,
+    right: -10,
+    borderWidth: 2,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    transform: [{ rotate: '8deg' }],
+  },
+  stickerText: {
+    fontWeight: '900',
+    fontSize: 16,
+  },
+
   title: {
+    fontSize: 38,
+    fontWeight: '900',
     textAlign: 'center',
+    lineHeight: 42,
   },
-  code: {
-    textTransform: 'uppercase',
+  subtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 12,
+    paddingHorizontal: 8,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+
+  bottom: {
+    gap: 14,
+    paddingBottom: 8,
+  },
+  footnote: {
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

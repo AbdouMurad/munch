@@ -1,18 +1,17 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { Stack } from 'expo-router';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { GameProvider } from '@/game';
+import { ThemeProvider } from '@/theme';
 
-SplashScreen.preventAutoHideAsync();
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+// ThemeProvider gives every screen our colors (light or dark).
+// GameProvider gives every screen the connection to the server.
+// A Stack shows one screen at a time, with no tab bar and no header.
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+    <ThemeProvider>
+      <GameProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </GameProvider>
     </ThemeProvider>
   );
 }
