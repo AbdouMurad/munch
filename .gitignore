@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+server/crawl_state.json
+server/crawl_state.tmp
