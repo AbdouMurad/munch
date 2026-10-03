@@ -1,65 +1,14 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Our colors, in two boxes: one for light mode, one for dark mode.
-// Both boxes have the SAME names, so the screen can use either one.
-const LIGHT = {
-  background: '#FFE55C', // sunny yellow
-  card: '#FFFFFF',
-  text: '#161616', // words, outlines, and shadows
-  softText: '#4A4220', // quieter words
-  accent: '#D93A21', // the red ring and the sticker
-  dot: '#161616', // the dot in the middle of the ring
-  onAccent: '#FFFFFF', // words that sit on the sticker
-  primary: '#161616', // the "Start a game" button
-  onPrimary: '#FFE55C', // words on that button
-};
-
-// Dark mode ("chili crisp"): dark brown, cream words, hot orange and gold.
-const DARK = {
-  background: '#160F0D',
-  card: '#2A1A16',
-  text: '#F8EBDB',
-  softText: '#B9A898',
-  accent: '#FF5A3C',
-  dot: '#E8B04B',
-  onAccent: '#160F0D',
-  primary: '#FF5A3C',
-  onPrimary: '#160F0D',
-};
-
-// A button is the same every time, only its words, colors, and job change.
-// So we build it ONCE here and reuse it below. Less copy-paste!
-function ChunkyButton({ label, background, textColor, outline, onPress }: {
-  label: string;
-  background: string;
-  textColor: string;
-  outline: string;
-  onPress: () => void;
-}) {
-  return (
-    <View style={styles.buttonWrapper}>
-      {/* The box behind the button that peeks out to the bottom-right.
-          That's how we get the chunky look! */}
-      <View style={[styles.buttonShadow, { backgroundColor: outline }]} />
-      <Pressable
-        accessibilityRole="button"
-        style={[styles.button, { backgroundColor: background, borderColor: outline }]}
-        onPress={onPress}>
-        <Text style={[styles.buttonText, { color: textColor }]}>{label}</Text>
-      </Pressable>
-    </View>
-  );
-}
+import { ChunkyButton } from '@/components/ui';
+import { useAppTheme } from '@/theme';
 
 // A "screen" is just a function that returns what we want to show.
 export default function HomeScreen() {
-  // Start in the same mode as the phone. The top-right button can flip it.
-  const [isDark, setIsDark] = useState(useColorScheme() === 'dark');
-
-  // Pick the right box of colors for the current mode.
-  const colors = isDark ? DARK : LIGHT;
+  // Grab our colors, and the switch that flips light/dark mode.
+  const { colors, isDark, toggleDark } = useAppTheme();
 
   return (
     // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
@@ -70,7 +19,7 @@ export default function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          onPress={() => setIsDark(!isDark)}
+          onPress={toggleDark}
           style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
           <Text style={[styles.themeButtonText, { color: colors.text }]}>
             {isDark ? 'LIGHT' : 'DARK'}
@@ -122,22 +71,8 @@ export default function HomeScreen() {
 
       {/* ---------- BOTTOM: the buttons ---------- */}
       <View style={styles.bottom}>
-        <ChunkyButton
-          label="Start a game"
-          background={colors.primary}
-          textColor={colors.onPrimary}
-          outline={colors.text}
-          // TODO: go to the "create a game" screen once it exists
-          onPress={() => {}}
-        />
-        <ChunkyButton
-          label="Join with a code"
-          background={colors.card}
-          textColor={colors.text}
-          outline={colors.text}
-          // TODO: go to the "enter a code" screen once it exists
-          onPress={() => {}}
-        />
+        <ChunkyButton label="Start a game" primary onPress={() => router.push('/create')} />
+        <ChunkyButton label="Join with a code" onPress={() => router.push('/join')} />
         <Text style={[styles.footnote, { color: colors.softText }]}>
           Friends can join without an account
         </Text>
@@ -253,30 +188,6 @@ const styles = StyleSheet.create({
   bottom: {
     gap: 14,
     paddingBottom: 8,
-  },
-  // The wrapper leaves a little room on the right and bottom for the shadow box.
-  buttonWrapper: {
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  buttonShadow: {
-    position: 'absolute', // sits behind the button...
-    left: 6, // ...nudged right
-    top: 6, // ...and down
-    right: -6,
-    bottom: -6,
-    borderRadius: 16,
-  },
-  button: {
-    height: 58,
-    borderRadius: 16,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    fontSize: 18,
-    fontWeight: '800',
   },
   footnote: {
     fontSize: 13,
