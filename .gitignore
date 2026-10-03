@@ -1,3 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 # Secrets: never commit these (keep a .env.example instead)
 .env
 .env.*
