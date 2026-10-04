@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/assets/images/cities/logo-dark-vancouver.png">
+    <img src="frontend/assets/images/cities/logo-vancouver.png" alt="munch" width="320">
+  </picture>
+</p>
+
 # munch
 
 Tinder for food. Make a room, share the code, everyone swipes on nearby restaurants, and the
