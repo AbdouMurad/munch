@@ -1,6 +1,7 @@
-import { Stack } from 'expo-router';
+import { router, Stack, usePathname } from 'expo-router';
+import { useEffect } from 'react';
 
-import { AccountProvider } from '@/account';
+import { AccountProvider, useAccount } from '@/account';
 import { CityProvider } from '@/city';
 import { GameProvider } from '@/game';
 import { TabsProvider } from '@/tabs';
@@ -20,10 +21,28 @@ export default function RootLayout() {
           <GameProvider>
             <TabsProvider>
               <Stack screenOptions={{ headerShown: false }} />
+              <FinishSigningUp />
             </TabsProvider>
           </GameProvider>
         </AccountProvider>
       </CityProvider>
     </ThemeProvider>
   );
+}
+
+// Signed in (with Google, or a new email account) but no handle yet? Then you're not done:
+// friends find you by your handle. Wherever you are (even after pressing back), this
+// sends you to the "pick a name and handle" step until you finish, or cancel by signing out.
+function FinishSigningUp() {
+  const account = useAccount();
+  const pathname = usePathname();
+  const unfinished = account.ready && account.me !== null && !account.me.handle;
+
+  useEffect(() => {
+    if (unfinished && pathname !== '/signin') {
+      router.replace({ pathname: '/signin', params: { mode: 'register' } });
+    }
+  }, [unfinished, pathname]);
+
+  return null;
 }

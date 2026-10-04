@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Me, Preferences, tidyHandle, useAccount } from '@/account';
+import { Me, Preferences, useAccount } from '@/account';
 import { Chip, Field, Message, SmallButton, UserAvatar } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { Page, SignInFirst } from '@/pages/page';
@@ -37,7 +37,7 @@ export default function ProfilePage() {
     );
   }
   // "key" makes a fresh form for each account, so the boxes always start with
-  // that person's saved name and handle (and never someone else's).
+  // that person's saved name (and never someone else's).
   return <ProfileForm key={account.me.id} me={account.me} />;
 }
 
@@ -47,7 +47,6 @@ function ProfileForm({ me }: { me: Me }) {
 
   // The boxes start filled in with what's saved, and keep what you type until you save.
   const [name, setName] = useState(me.displayName);
-  const [handle, setHandle] = useState(me.handle ?? '');
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [message, setMessage] = useState({ text: '', problem: false });
   const [uploading, setUploading] = useState(false);
@@ -67,21 +66,15 @@ function ProfileForm({ me }: { me: Me }) {
       setMessage({ text: 'Your name can’t be empty.', problem: true });
       return;
     }
-    if (handle && handle.length < 3) {
-      setMessage({ text: 'Handles need at least 3 letters, numbers or _.', problem: true });
-      return;
-    }
     try {
-      // Name and handle are saved the same way: only what you changed is sent.
+      // Only what you changed is sent. (Your handle is picked once and never changes.)
       const changes: Record<string, string> = {};
       if (name.trim() !== me.displayName) changes.displayName = name.trim();
-      if (handle && handle !== me.handle) changes.handle = handle;
       if (Object.keys(changes).length > 0) {
         const saved = await account.api<Me>('/api/me', 'PATCH', changes);
         account.setMe(saved);
         // Show exactly what was saved (the server tidies up spaces).
         setName(saved.displayName);
-        setHandle(saved.handle ?? '');
       }
       if (prefs) {
         setPrefs(await account.api<Preferences>('/api/me/preferences', 'PUT', prefs));
@@ -162,16 +155,14 @@ function ProfileForm({ me }: { me: Me }) {
       </View>
 
       {/* ---------- Name and handle ---------- */}
-      {!me.handle && <Message text="Pick a handle so friends can find you." problem={false} />}
       <Field label="Name" value={name} onChangeText={setName} maxLength={24} />
-      <Field
-        label="Handle (letters, numbers, _)"
-        value={handle}
-        onChangeText={(typed) => setHandle(tidyHandle(typed))}
-        placeholder="sam_eats"
-        autoCapitalize="none"
-        maxLength={20}
-      />
+      {/* The handle is picked once, when you sign up, and can't be changed: it's how
+          friends find and add you, so changing it would lose them. Shown, not edited. */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Handle</Text>
+        <Text style={[styles.handle, { color: colors.text }]}>@{me.handle}</Text>
+        <Text style={{ color: colors.softText }}>Handles can&apos;t be changed.</Text>
+      </View>
       {me.email && <Text style={{ color: colors.softText }}>Signed in as {me.email}</Text>}
 
       {/* ---------- What I like ---------- */}
@@ -235,6 +226,10 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 14,
+    fontWeight: '800',
+  },
+  handle: {
+    fontSize: 18,
     fontWeight: '800',
   },
   chips: {

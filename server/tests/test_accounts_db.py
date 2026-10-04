@@ -198,6 +198,20 @@ def test_profile_and_handle(client: TestClient) -> None:
     assert bad.json()["error"]["message"] == "Handles need 3-20 letters, numbers or _"
 
 
+def test_handle_is_locked_once_picked(client: TestClient) -> None:
+    sam = sign_in(client, "sam@example.com", handle="sam_eats")
+    changed = client.patch("/api/me", json={"handle": "sammy"}, headers=sam["headers"])
+    assert changed.status_code == 409 and changed.json()["error"]["code"] == "HANDLE_LOCKED"
+    # Sending the same handle again (any capitals) is fine, and other fields still save.
+    same = client.patch(
+        "/api/me", json={"handle": "SAM_EATS", "displayName": "Sam"}, headers=sam["headers"]
+    )
+    assert same.status_code == 200
+    assert same.json()["handle"] == "sam_eats" and same.json()["displayName"] == "Sam"
+    me = client.get("/api/me", headers=sam["headers"]).json()
+    assert me["handle"] == "sam_eats"
+
+
 def test_preferences(client: TestClient) -> None:
     sam = sign_in(client, "sam@example.com")
     assert client.get("/api/me/preferences", headers=sam["headers"]).json() == {

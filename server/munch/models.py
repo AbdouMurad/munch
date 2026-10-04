@@ -149,6 +149,7 @@ ErrorCode = Literal[
     "FORBIDDEN",
     "VALIDATION_ERROR",
     "HANDLE_TAKEN",
+    "HANDLE_LOCKED",  # a handle is picked once and can't be changed
     "INVALID_CODE",
     "RATE_LIMITED",
     "UNAVAILABLE",  # needs the DB and it isn't configured

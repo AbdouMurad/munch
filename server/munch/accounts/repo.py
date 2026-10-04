@@ -150,18 +150,27 @@ async def update_profile(
     display_name: str | None,
     share_likes: bool | None,
 ) -> MyProfile:
+    """A handle is picked once (when registering) and is then locked: friends add you by it.
+    Sending your current handle again is fine; a different one is HANDLE_LOCKED."""
     try:
-        row = await pool.fetchrow(
-            f"""UPDATE users AS u SET
-                  handle = COALESCE($2, u.handle),
-                  display_name = COALESCE($3, u.display_name),
-                  share_likes = COALESCE($4, u.share_likes)
-                WHERE u.id = $1 RETURNING {USER_COLS}""",
-            user_id,
-            handle,
-            display_name,
-            share_likes,
-        )
+        async with pool.acquire() as conn, conn.transaction():
+            # Lock the row, so two requests can't both set a first handle.
+            current: str | None = await conn.fetchval(
+                "SELECT handle FROM users WHERE id = $1 FOR UPDATE", user_id
+            )
+            if handle is not None and current is not None and handle.lower() != current.lower():
+                raise AccountError("HANDLE_LOCKED", "Handles can't be changed once picked")
+            row = await conn.fetchrow(
+                f"""UPDATE users AS u SET
+                      handle = COALESCE(u.handle, $2),
+                      display_name = COALESCE($3, u.display_name),
+                      share_likes = COALESCE($4, u.share_likes)
+                    WHERE u.id = $1 RETURNING {USER_COLS}""",
+                user_id,
+                handle,
+                display_name,
+                share_likes,
+            )
     except asyncpg.UniqueViolationError as e:
         raise AccountError("HANDLE_TAKEN", f"@{handle} is taken") from e
     if row is None:

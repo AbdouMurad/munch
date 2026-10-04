@@ -20,3 +20,16 @@ def test_unknown_route_uses_error_shape() -> None:
         resp = c.get("/api/nope")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_web_origin_can_be_a_list() -> None:
+    settings = Settings(
+        database_url=None, web_origin="http://localhost:8081, https://abc.trycloudflare.com/"
+    )
+    assert settings.web_origin_list == ["http://localhost:8081", "https://abc.trycloudflare.com"]
+    with TestClient(create_app(settings)) as client:
+        for origin in settings.web_origin_list:
+            resp = client.get("/api/health", headers={"Origin": origin})
+            assert resp.headers["access-control-allow-origin"] == origin
+        other = client.get("/api/health", headers={"Origin": "https://evil.example"})
+        assert "access-control-allow-origin" not in other.headers

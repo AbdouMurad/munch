@@ -49,6 +49,14 @@ export default function SignInScreen() {
     router.back();
   }
 
+  // Leaving the "pick a name and handle" step would leave a half-made account with no
+  // handle. So "back" there means "not now": sign out and go home. (You can sign in
+  // again any time and pick up here.)
+  async function cancelRegistering() {
+    await account.signOut();
+    router.replace('/');
+  }
+
   // Step 3: save the name and handle, then go to your new profile.
   async function register() {
     setProblem('');
@@ -89,14 +97,15 @@ export default function SignInScreen() {
     return (
       <Screen>
         <View style={styles.topBar}>
-          <BackButton onPress={() => router.back()} />
+          <BackButton onPress={cancelRegistering} />
           <Text style={[styles.topTitle, { color: colors.text }]}>Create account</Text>
         </View>
 
         <View>
           <Text style={[styles.title, { color: colors.text }]}>Almost done!</Text>
           <Text style={[styles.subtitle, { color: colors.softText }]}>
-            This is how friends will see you, and how they can find you.
+            This is how friends will see you, and how they can find you. Your handle
+            can&apos;t be changed later. Going back signs you out.
           </Text>
         </View>
 

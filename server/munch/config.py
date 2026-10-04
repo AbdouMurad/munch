@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # None = run without a DB: rooms still work in memory, persistence and /stats are off.
     database_url: str | None = None
     google_places_api_key: str | None = None
+    # Where the app is served from, for CORS. Comma-separated for more than one, e.g.
+    # "http://localhost:8081,https://abc.trycloudflare.com" (local + a tunnel for friends).
     web_origin: str = "http://localhost:5173"
     ingest_max_requests: int = 200
 
@@ -31,6 +33,10 @@ class Settings(BaseSettings):
     login_code_max_attempts: int = 5
     login_codes_per_hour: int = 5  # per email
     invite_ttl: timedelta = timedelta(minutes=30)
+
+    @property
+    def web_origin_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.web_origin.split(",") if o.strip()]
 
     @property
     def google_client_id_list(self) -> list[str]:
