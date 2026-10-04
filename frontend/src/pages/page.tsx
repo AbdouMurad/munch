@@ -1,9 +1,9 @@
 // Shared pieces for the three home pages (Profile, Play, Friends).
 
-import { router } from 'expo-router';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { SignInSheet } from '@/components/sign-in-sheet';
 import { ChunkyButton } from '@/components/ui';
 import { useAppTheme } from '@/theme';
 
@@ -33,12 +33,15 @@ export function Page({ title, action, footer, children }: {
 
 // ---------- SignInFirst ----------
 // What Profile and Friends show before you sign in.
+// Tapping "Sign in" opens the pop-up: sign in with email, create an account, or Google.
 export function SignInFirst({ why }: { why: string }) {
   const { colors } = useAppTheme();
+  const [choosing, setChoosing] = useState(false);
   return (
     <View style={styles.signIn}>
       <Text style={[styles.why, { color: colors.softText }]}>{why}</Text>
-      <ChunkyButton label="Sign in" primary onPress={() => router.push('/signin')} />
+      <ChunkyButton label="Sign in" primary onPress={() => setChoosing(true)} />
+      <SignInSheet visible={choosing} onClose={() => setChoosing(false)} />
     </View>
   );
 }
@@ -70,8 +73,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   signIn: {
+    flex: 1, // fill the page under the title...
+    justifyContent: 'center', // ...and sit in the middle of it, not stuck at the top
     gap: 16,
-    marginTop: 8,
+    paddingBottom: 60, // a little above the true middle looks more centered
   },
   why: {
     fontSize: 16,

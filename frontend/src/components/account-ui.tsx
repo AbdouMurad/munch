@@ -50,6 +50,27 @@ export function UserAvatar({ name, avatarUrl, size = 40 }: {
   );
 }
 
+// ---------- PlayingAs ----------
+// On the create and join screens when you're signed in: your picture and name,
+// instead of a box asking for your name.
+export function PlayingAs() {
+  const { colors } = useAppTheme();
+  const { me } = useAccount();
+  if (!me) return null;
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: colors.text }]}>Playing as</Text>
+      <View style={styles.playingAs}>
+        <UserAvatar name={me.displayName} avatarUrl={me.avatarUrl} />
+        <View>
+          <Text style={[styles.playingName, { color: colors.text }]}>{me.displayName}</Text>
+          {me.handle && <Text style={{ color: colors.softText }}>@{me.handle}</Text>}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ---------- Field ----------
 // A label with a text box under it.
 export function Field({ label, ...input }: { label: string } & TextInputProps) {
@@ -277,6 +298,15 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: 6,
+  },
+  playingAs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  playingName: {
+    fontSize: 17,
+    fontWeight: '700',
   },
   label: {
     fontSize: 14,

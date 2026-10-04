@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 
-import { CARD_HEIGHT, messyDegrees, RestaurantCard } from '@/components/restaurant-card';
+import { cardHeight, messyDegrees, PHOTO_HEIGHT, RestaurantCard } from '@/components/restaurant-card';
 import { Card } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -26,11 +26,18 @@ const PEEKING = 3;
 // you can flip through them all, round and round. "flipRef" lets the screen
 // flip to the next card with a button too (handy on a computer).
 // "onTopChange" tells the screen which restaurant is on top (for its Directions button).
-export function ResultStack({ items, memberCount, onTopChange, flipRef }: {
+export function ResultStack({
+  items,
+  memberCount,
+  onTopChange,
+  flipRef,
+  photoHeight = PHOTO_HEIGHT,
+}: {
   items: ResultItem[];
   memberCount: number; // how many friends played, for "2 of 3 said yes"
   onTopChange: (restaurantId: string) => void;
   flipRef: React.RefObject<(() => void) | null>;
+  photoHeight?: number; // shorter photos on a small phone, so the whole screen fits
 }) {
   // The pile, as places in "items": the first number is the top card.
   const [order, setOrder] = useState(() => items.map((_, i) => i));
@@ -99,7 +106,8 @@ export function ResultStack({ items, memberCount, onTopChange, flipRef }: {
   });
 
   return (
-    <View style={styles.pile}>
+    // Tall enough for one card plus the cards peeking out underneath.
+    <View style={{ height: cardHeight(photoHeight) + PEEKING * 10 }}>
       {/* Bottom card first: things drawn later sit on top. */}
       {[...order].reverse().map((itemIndex) => {
         const depth = order.indexOf(itemIndex);
@@ -111,6 +119,7 @@ export function ResultStack({ items, memberCount, onTopChange, flipRef }: {
             item={items[itemIndex]}
             tilt={messyDegrees(itemIndex)}
             depth={depth}
+            photoHeight={photoHeight}
             drag={depth === 0 ? { x: dragX, tilt, handlers: panResponder.panHandlers } : undefined}>
             <Stickers item={items[itemIndex]} memberCount={memberCount} />
           </PileCard>
@@ -123,10 +132,11 @@ export function ResultStack({ items, memberCount, onTopChange, flipRef }: {
 // One card in the pile. depth 0 = on top (straight, follows your finger),
 // 1 = just under it, and so on. Deeper cards sit lower, smaller and a bit
 // crooked. When a card's depth changes, it glides to its new spot.
-function PileCard({ item, tilt, depth, drag, children }: {
+function PileCard({ item, tilt, depth, photoHeight, drag, children }: {
   item: ResultItem;
   tilt: number; // this card's own crooked angle, in degrees
   depth: number;
+  photoHeight: number;
   drag?: {
     x: Animated.Value;
     tilt: Animated.AnimatedInterpolation<string>;
@@ -172,7 +182,10 @@ function PileCard({ item, tilt, depth, drag, children }: {
           ],
         },
       ]}>
-      <RestaurantCard card={item.card}>{children}</RestaurantCard>
+      {/* Only the top card has a shadow, so the pile doesn't turn into a black blob. */}
+      <RestaurantCard card={item.card} shadow={depth === 0} photoHeight={photoHeight}>
+        {children}
+      </RestaurantCard>
     </Animated.View>
   );
 }
@@ -195,10 +208,6 @@ function Stickers({ item, memberCount }: { item: ResultItem; memberCount: number
 }
 
 const styles = StyleSheet.create({
-  // Tall enough for one card plus the cards peeking out underneath.
-  pile: {
-    height: CARD_HEIGHT + PEEKING * 10,
-  },
   card: {
     position: 'absolute', // every card sits in the same spot, one on top of another
     top: 0,

@@ -12,8 +12,13 @@ import {
   ViewStyle,
 } from 'react-native';
 
-import { messyDegrees, messyTilt, RestaurantCard } from '@/components/restaurant-card';
-import { Avatar, ChunkyBox, ErrorLine, Screen } from '@/components/ui';
+import {
+  CARD_HEIGHT,
+  messyDegrees,
+  messyTilt,
+  RestaurantCard,
+} from '@/components/restaurant-card';
+import { Avatar, ErrorLine, Screen } from '@/components/ui';
 import { initials, PRELOAD_AHEAD, preloadPhotos, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -26,11 +31,13 @@ function RoundButton({ symbol, label, background, symbolColor, onPress }: {
   symbolColor: string;
   onPress: () => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}>
-      <ChunkyBox background={background} radius={32} style={styles.roundButton}>
+      {/* A plain circle with an outline (no shadow, so it reads as ONE button). */}
+      <View style={[styles.roundButton, { backgroundColor: background, borderColor: colors.text }]}>
         <Text style={[styles.roundButtonSymbol, { color: symbolColor }]}>{symbol}</Text>
-      </ChunkyBox>
+      </View>
     </Pressable>
   );
 }
@@ -329,7 +336,9 @@ export default function SwipeScreen() {
       <View style={styles.row}>
         <View>
           <Text style={[styles.gameName, { color: colors.text }]}>Lobby {room.code}</Text>
-          <Text style={{ color: colors.softText }}>{room.members.length} players</Text>
+          <Text style={{ color: colors.softText }}>
+            {room.members.length} {room.members.length === 1 ? 'player' : 'players'}
+          </Text>
         </View>
         <Pressable accessibilityRole="button" onPress={game.leaveRoom}>
           <Text style={[styles.leave, { color: colors.text }]}>Leave</Text>
@@ -339,38 +348,35 @@ export default function SwipeScreen() {
       {/* ---------- How far along we are ---------- */}
       <View style={styles.progress}>
         <View style={styles.row}>
+          {/* Cards left, and how many likes it takes to win (2/3 of us). */}
           <Text style={{ color: colors.softText }}>
-            {cardsLeft} {cardsLeft === 1 ? 'card' : 'cards'} left
+            {cardsLeft} {cardsLeft === 1 ? 'card' : 'cards'} left ·{' '}
+            <Text style={[styles.rule, { color: colors.text }]}>
+              ♥ {room.matchThreshold} {room.matchThreshold === 1 ? 'like wins' : 'likes win'}
+            </Text>
           </Text>
           <Text style={{ color: colors.softText }}>
             {finishedCount} of {room.members.length} finished
           </Text>
         </View>
 
-        {/* Matches so far, and (for the host) a way to get more restaurants. */}
         <View style={styles.row}>
-          <Text style={[styles.rule, { color: colors.text }]}>
-            ♥ First match wins
-            <Text style={{ color: colors.softText }}>
-              {'  '}({room.matchThreshold} likes)
-            </Text>
-          </Text>
+          {/* One little circle per friend. A check means they are finished. */}
+          <View style={styles.avatars}>
+            {room.members.map((member) => (
+              <Avatar
+                key={member.id}
+                initials={initials(member.displayName)}
+                done={member.progress >= room.deckSize}
+              />
+            ))}
+          </View>
+          {/* Only the host: get more restaurants from farther away, for everyone. */}
           {isHost && (
             <Pressable accessibilityRole="button" onPress={game.searchFarther}>
-              <Text style={[styles.farther, { color: colors.text }]}>Search farther +2 km</Text>
+              <Text style={[styles.farther, { color: colors.text }]}>Search farther</Text>
             </Pressable>
           )}
-        </View>
-
-        {/* One little circle per friend. A check means they are finished. */}
-        <View style={styles.avatars}>
-          {room.members.map((member) => (
-            <Avatar
-              key={member.id}
-              initials={initials(member.displayName)}
-              done={member.progress >= room.deckSize}
-            />
-          ))}
         </View>
       </View>
 
@@ -426,7 +432,8 @@ export default function SwipeScreen() {
                         [{ translateY: fallY }, messyTilt(place)],
                   },
                 ]}>
-                <RestaurantCard card={game.deck[place]} showPhoto={nearTop}>
+                {/* Only the top card has a shadow: 10 tilted shadows stack into a black blob. */}
+                <RestaurantCard card={game.deck[place]} showPhoto={nearTop} shadow={isTop}>
                   {/* Only the top card needs the glows. */}
                   {isTop && (
                     <>
@@ -525,7 +532,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   avatars: {
+    flex: 1, // takes the room left of "Search farther"...
     flexDirection: 'row',
+    flexWrap: 'wrap', // ...and wraps onto a second line if there are lots of friends
     gap: 4,
   },
 
@@ -536,7 +545,7 @@ const styles = StyleSheet.create({
   // The pile's box. It has a fixed height because the cards inside are
   // "absolute" (stacked on top of each other), so they can't push it open.
   cardStack: {
-    height: 386, // photo (220) + details (156) + outline and shadow (10)
+    height: CARD_HEIGHT, // one card; the others sit on top of it
     marginHorizontal: 12,
   },
   stackedCard: {
@@ -587,6 +596,8 @@ const styles = StyleSheet.create({
   roundButton: {
     width: 64,
     height: 64,
+    borderRadius: 32, // half the size = a perfect circle
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },

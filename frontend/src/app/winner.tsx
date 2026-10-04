@@ -1,6 +1,6 @@
 import { Redirect } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { ResultItem, ResultStack } from '@/components/result-stack';
 import { ChunkyButton, Eye, Screen } from '@/components/ui';
@@ -22,6 +22,10 @@ export default function WinnerScreen() {
   const [topId, setTopId] = useState<string | null>(null);
   // Lets the "Next" button flip the pile, same as a swipe (handy on a computer).
   const flipRef = useRef<(() => void) | null>(null);
+  // A short phone (like an iPhone SE) gets shorter photos, so the card, "Get directions"
+  // and "Play again" all fit without scrolling.
+  const { height } = useWindowDimensions();
+  const photoHeight = height < 760 ? 140 : 220;
 
   // No room or no result yet (for example, the page was refreshed)? Go back home.
   if (!room || !result) return <Redirect href="/" />;
@@ -61,6 +65,7 @@ export default function WinnerScreen() {
             memberCount={room.members.length}
             onTopChange={setTopId}
             flipRef={flipRef}
+            photoHeight={photoHeight}
           />
 
           {/* More than one? Say so, and give computers a button to flip through. */}

@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { CardTaxi, Logo, useCity } from '@/city';
 import { InvitesInbox } from '@/components/account-ui';
@@ -14,9 +14,21 @@ export default function PlayPage() {
   const { colors } = useAppTheme();
   // Which special city we're in (Vancouver, Toronto, Edmonton), or null for none.
   const city = useCity();
+  // A short phone (like an iPhone SE) doesn't have room for the full-size picture and
+  // big words above the bar at the bottom, so they shrink to fit.
+  const { height } = useWindowDimensions();
+  const compact = height < 760;
+  const pictureScale = compact ? 0.7 : 1;
+  // Which version of the code this is (stamped on when the app is built, see
+  // app.config.js). Not stamped, like while we're developing? Then don't show it.
+  const version = Constants.expoConfig?.extra?.version;
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    // Scrolls if it STILL doesn't fit (a tiny screen), instead of things overlapping.
+    <ScrollView
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={styles.screen}
+      showsVerticalScrollIndicator={false}>
       {/* ---------- TOP: the app name and the dark mode switch ---------- */}
       <View style={styles.topBar}>
         {/* The logo. In Vancouver, Toronto or Edmonton it's that city's special
@@ -33,48 +45,51 @@ export default function PlayPage() {
 
       {/* ---------- MIDDLE: the picture and the words ---------- */}
       <View style={styles.middle}>
-        {/* The picture is made of 3 boxes stacked on top of each other. */}
-        <View style={styles.illustration}>
-          {/* Box 1: the card hiding at the back, tilted a little */}
-          <View
-            style={[
-              styles.card,
-              styles.backCard,
-              { backgroundColor: colors.card, borderColor: colors.text },
-            ]}
-          />
+        {/* The picture is made of 3 boxes stacked on top of each other.
+            On a short phone it's drawn smaller ("scale"), in a shorter box. */}
+        <View style={[styles.pictureBox, { height: 260 * pictureScale }]}>
+          <View style={[styles.illustration, { transform: [{ scale: pictureScale }] }]}>
+            {/* Box 1: the card hiding at the back, tilted a little */}
+            <View
+              style={[
+                styles.card,
+                styles.backCard,
+                { backgroundColor: colors.card, borderColor: colors.text },
+              ]}
+            />
 
-          {/* Box 2: the front card, tilted the other way */}
-          <View
-            style={[
-              styles.card,
-              styles.frontCard,
-              { backgroundColor: colors.card, borderColor: colors.text },
-            ]}>
-            {city ? (
-              // In a special city: that city's taxi drives across the card.
-              <CardTaxi width={184} />
-            ) : (
-              // Anywhere else: the bullseye. A ring (a circle with just a colored edge)...
-              <View style={[styles.ring, { borderColor: colors.accent }]}>
-                {/* ...with a dot inside it. */}
-                <View style={[styles.dot, { backgroundColor: colors.dot }]} />
-              </View>
-            )}
-          </View>
+            {/* Box 2: the front card, tilted the other way */}
+            <View
+              style={[
+                styles.card,
+                styles.frontCard,
+                { backgroundColor: colors.card, borderColor: colors.text },
+              ]}>
+              {city ? (
+                // In a special city: that city's taxi drives across the card.
+                <CardTaxi width={184} />
+              ) : (
+                // Anywhere else: the bullseye. A ring (a circle with just a colored edge)...
+                <View style={[styles.ring, { borderColor: colors.accent }]}>
+                  {/* ...with a dot inside it. */}
+                  <View style={[styles.dot, { backgroundColor: colors.dot }]} />
+                </View>
+              )}
+            </View>
 
-          {/* Box 3: the "OH YES" sticker in the top-right corner */}
-          <View
-            style={[styles.sticker, { backgroundColor: colors.accent, borderColor: colors.text }]}>
-            <Text style={[styles.stickerText, { color: colors.onAccent }]}>OH YES</Text>
+            {/* Box 3: the "OH YES" sticker in the top-right corner */}
+            <View
+              style={[styles.sticker, { backgroundColor: colors.accent, borderColor: colors.text }]}>
+              <Text style={[styles.stickerText, { color: colors.onAccent }]}>OH YES</Text>
+            </View>
           </View>
         </View>
 
-        <Text style={[styles.title, { color: colors.text }]}>
+        <Text style={[styles.title, compact && styles.titleCompact, { color: colors.text }]}>
           Swipe together.{'\n'}Eat together.
         </Text>
         <Text style={[styles.subtitle, { color: colors.softText }]}>
-          Everyone swipes the same spots. The place your group agrees on most wins.
+          Everyone swipes the same spots. The first place most of you like wins.
         </Text>
       </View>
 
@@ -87,13 +102,12 @@ export default function PlayPage() {
         </Text>
         {/* Which version of the code this is (the latest git commit), in tiny
             faint letters. It's only here to help us when something goes wrong:
-            "what does it say at the bottom of your home screen?"
-            The value is stamped on when the app is built (see app.config.js). */}
-        <Text style={[styles.version, { color: colors.softText }]}>
-          version {Constants.expoConfig?.extra?.version ?? 'unknown'}
-        </Text>
+            "what does it say at the bottom of your home screen?" */}
+        {version && (
+          <Text style={[styles.version, { color: colors.softText }]}>version {version}</Text>
+        )}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -102,7 +116,7 @@ export default function PlayPage() {
 // Only sizes, spacing, and positions live here, because those never change.
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    flexGrow: 1, // fill the page, but grow taller (and scroll) if it has to
     paddingHorizontal: 20,
   },
   topBar: {
@@ -122,10 +136,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Holds the picture. Its height shrinks with the picture on short phones.
+  pictureBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
   illustration: {
     width: 240,
     height: 260,
-    marginBottom: 24,
   },
 
   // Both cards share this: rounded, with an outline.
@@ -182,6 +201,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
     lineHeight: 42,
+  },
+  titleCompact: {
+    fontSize: 30,
+    lineHeight: 34,
   },
   subtitle: {
     fontSize: 15,

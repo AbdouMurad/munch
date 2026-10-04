@@ -68,7 +68,7 @@ export type Invite = {
 };
 
 // What the server gives us when we sign in.
-type SignedIn = {
+export type SignedIn = {
   sessionToken: string;
   user: Me;
   isNew: boolean; // first time: we ask them to pick a handle
@@ -102,8 +102,8 @@ type Account = {
   // Send a request to the server, signed in as me. Throws an Error with the server's message.
   api: <T>(path: string, method?: string, body?: object) => Promise<T>;
   emailStart: (email: string) => Promise<void>;
-  emailVerify: (email: string, code: string) => Promise<boolean>; // true = new account
-  googleSignIn: (idToken: string) => Promise<boolean>; // true = new account
+  emailVerify: (email: string, code: string) => Promise<SignedIn>;
+  googleSignIn: (idToken: string) => Promise<SignedIn>;
   signOut: () => Promise<void>;
   setMe: (me: Me) => void;
   uploadAvatar: (imageUri: string) => Promise<void>; // a small square JPEG on this device
@@ -162,7 +162,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     await saveToken(result.sessionToken);
     setToken(result.sessionToken);
     setMe(result.user);
-    return result.isNew;
+    return result;
   }
 
   async function emailStart(email: string) {
@@ -317,4 +317,14 @@ export function displayHandle(user: { handle: string | null; displayName: string
 export function avatarUri(avatarUrl: string | null | undefined) {
   if (!avatarUrl) return null;
   return avatarUrl.startsWith('/') ? SERVER_URL + avatarUrl : avatarUrl;
+}
+
+// Handles are 3 to 20 letters, numbers or _. As you type we quietly tidy it up:
+// "@Sam Eats!" becomes "Sam_Eats".
+export function tidyHandle(typed: string) {
+  return typed
+    .replace(/^@+/, '') // people often type the @ they see in the app
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_]/g, '')
+    .slice(0, 20);
 }

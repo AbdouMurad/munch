@@ -31,20 +31,23 @@ export function Screen({ children }: { children: ReactNode }) {
 // ---------- ChunkyBox ----------
 // A box with an outline and a hard shadow peeking out to the bottom-right.
 // This is the "chunky" look used by buttons and cards all over the app.
-export function ChunkyBox({ children, background, radius = 16, style }: {
+export function ChunkyBox({ children, background, radius = 16, style, shadow = true }: {
   children: ReactNode;
   background: string; // the color inside the box
   radius?: number; // how round the corners are
   style?: ViewStyle; // any extra rules for the box
+  shadow?: boolean; // false = no shadow (e.g. cards under the top one in a pile)
 }) {
   const { colors } = useAppTheme();
   return (
     // The wrapper leaves a little room on the right and bottom for the shadow.
     <View style={styles.chunkyWrapper}>
       {/* The shadow: a plain box sitting behind, nudged right and down. */}
-      <View
-        style={[styles.chunkyShadow, { backgroundColor: colors.shadow, borderRadius: radius }]}
-      />
+      {shadow && (
+        <View
+          style={[styles.chunkyShadow, { backgroundColor: colors.shadow, borderRadius: radius }]}
+        />
+      )}
       {/* The real box, on top. */}
       <View
         style={[

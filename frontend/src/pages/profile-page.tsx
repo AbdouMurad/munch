@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Me, Preferences, useAccount } from '@/account';
+import { Me, Preferences, tidyHandle, useAccount } from '@/account';
 import { Chip, Field, Message, SmallButton, UserAvatar } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { Page, SignInFirst } from '@/pages/page';
@@ -18,16 +18,6 @@ const DIETARY: [string, string][] = [
 ];
 // Profile pictures are shrunk to this many pixels wide (and tall) before uploading.
 const PICTURE_SIZE = 256;
-
-// Handles are 3 to 20 letters, numbers or _. As you type we quietly tidy it up:
-// "@Sam Eats!" becomes "Sam_Eats".
-function tidyHandle(typed: string) {
-  return typed
-    .replace(/^@+/, '') // people often type the @ they see in the app
-    .replace(/\s+/g, '_')
-    .replace(/[^A-Za-z0-9_]/g, '')
-    .slice(0, 20);
-}
 
 // Add the thing to the list if it's missing, take it out if it's there.
 function flip<T>(list: T[], item: T) {

@@ -187,6 +187,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     paddingHorizontal: 8,
     paddingTop: 6,
+    paddingBottom: 10, // so the highlighted tab doesn't touch the bottom of the screen
   },
   barItem: {
     flex: 1, // three equal slots
