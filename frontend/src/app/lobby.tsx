@@ -147,9 +147,14 @@ export default function LobbyScreen() {
 
       <ErrorLine />
 
-      {iAmHost ? (
-        // The server answers by sending everyone the cards. When they arrive,
-        // game.tsx moves every player to the swipe screen.
+      {game.loadingCards ? (
+        // The game has started! game.tsx is downloading the first photos.
+        // As soon as they're ready, it moves every player to the swipe screen.
+        <Text style={[styles.waiting, { color: colors.softText }]}>
+          Getting the cards ready...
+        </Text>
+      ) : iAmHost ? (
+        // The server answers by sending everyone the cards (see above).
         <ChunkyButton label="Start game" primary onPress={game.startGame} />
       ) : (
         <Text style={[styles.waiting, { color: colors.softText }]}>

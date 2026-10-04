@@ -5,6 +5,7 @@ import {
   Animated,
   Easing,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -44,7 +45,47 @@ function RoundButton({ symbol, label, background, symbolColor, onPress }: {
 
 // How far (in pixels) you must drag a card before it counts as an answer.
 // Drag less than this and let go, and the card bounces back to the middle.
-const SWIPE_DISTANCE = 120;
+// (A phone screen is about 375 pixels wide, so this is a short, easy drag.)
+const SWIPE_DISTANCE = 70;
+
+// A quick FLICK also counts, even if the card didn't travel far.
+// FLICK_SPEED is how fast the finger must be moving when it lets go
+// (in pixels per millisecond), and FLICK_DISTANCE is the least it must have
+// moved, so a tiny accidental twitch doesn't answer the card.
+const FLICK_SPEED = 0.5;
+const FLICK_DISTANCE = 20;
+
+// ---------- Making it smooth ----------
+
+// Phones have a special helper (the "native driver") that moves things on the
+// screen by itself, without waiting for our JavaScript code. That keeps a drag
+// smooth even while the app is busy. Web browsers don't have this helper.
+// If cards ever misbehave in the phone app, change this to false to switch it off.
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+
+// Makes an "Animated" number that the helper above is allowed to move.
+// EVERY animated number on this screen is made here, so they all play by the
+// same rule (mixing helper numbers and normal numbers on one card causes jumps).
+function makeNumber(start: number) {
+  return new Animated.Value(start, { useNativeDriver: USE_NATIVE_DRIVER });
+}
+
+// Extra hints for web browsers (phones' Safari and Chrome) only:
+//  - willChange: "this box is going to move". The browser then keeps the card
+//    as its own ready-made picture and just slides it, instead of re-painting
+//    the card (photo, words, outline) on every tiny movement.
+//  - touchAction 'pan-y': "the browser may scroll up/down, but sideways
+//    drags belong to us". Without it the browser hesitates on each drag
+//    while it decides whether you're scrolling, which feels sticky.
+const WEB_MOVING_CARD =
+  Platform.OS === 'web' ? ({ willChange: 'transform', touchAction: 'pan-y' } as ViewStyle) : null;
+// The same "this is going to change" hint, for the glows that fade in and out.
+const WEB_FADING_GLOW = Platform.OS === 'web' ? ({ willChange: 'opacity' } as ViewStyle) : null;
+
+// Only the top few cards of the pile draw their photo. The cards deeper down
+// are covered up anyway, and drawing 10 big photos at once is slow on a phone.
+// (Their photos are still downloaded early, so they appear instantly later.)
+const CARDS_WITH_PHOTOS = 3;
 
 // How many cards sit in the pile at one time.
 // You swipe through these, and when they are ALL gone, a fresh pile of this
@@ -60,7 +101,7 @@ const FALL_GAP = 50; // how long we wait before dropping the NEXT card
 // Each one starts at 0 (= still up in the sky, out of sight)
 // and later slides to 1 (= landed on the pile).
 function makeFalls() {
-  return Array.from({ length: HAND_SIZE }, () => new Animated.Value(0));
+  return Array.from({ length: HAND_SIZE }, () => makeNumber(0));
 }
 
 // Makes a "gradient": a color that fades from see-through to solid.
@@ -88,14 +129,20 @@ function messyTilt(placeInDeck: number) {
 }
 
 // One printed restaurant card: a photo on top, the name and details underneath.
+// "showPhoto" is false for cards buried deep in the pile (see CARDS_WITH_PHOTOS).
 // "children" is anything extra to draw on top of the card (we use it for the glow).
-function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }) {
+function RestaurantCard({ card, showPhoto, children }: {
+  card: Card;
+  showPhoto: boolean;
+  children?: ReactNode;
+}) {
   const { colors } = useAppTheme();
-  const photo = photoAddress(card);
+  const photo = showPhoto ? photoAddress(card) : null;
   return (
     <ChunkyBox background={colors.card} radius={20}>
       {/* Top half: the restaurant photo. The eye mascot sits underneath,
-          so it shows while the photo loads, or if there is no photo. */}
+          so it shows while the photo loads, or if there is no photo
+          (or if this card is too deep in the pile to bother with one). */}
       <View style={[styles.photo, { backgroundColor: colors.soft }]}>
         <Eye size={160} />
         {photo && (
@@ -153,14 +200,18 @@ export default function SwipeScreen() {
   // a plus number = dragged right, a minus number = dragged left.
   // It's an "Animated" number, so things that follow it move smoothly.
   // Each new top card gets its OWN fresh dragX (see flyAway below).
-  const [dragX, setDragX] = useState(() => new Animated.Value(0));
+  const [dragX, setDragX] = useState(() => makeNumber(0));
 
   // When a card becomes the top card, it straightens out (its crooked tilt
   // springs back to 0). 0 = still crooked like in the pile, 1 = perfectly straight.
   // Each new top card gets a fresh one that starts at 0 (see answer below).
-  const [straighten, setStraighten] = useState(() => new Animated.Value(1));
+  const [straighten, setStraighten] = useState(() => makeNumber(1));
   useEffect(() => {
-    Animated.spring(straighten, { toValue: 1, friction: 7, useNativeDriver: false }).start();
+    Animated.spring(straighten, {
+      toValue: 1,
+      friction: 7,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start();
   }, [straighten]);
 
   // Keep the next few photos downloading, so they're ready before their cards
@@ -197,7 +248,7 @@ export default function SwipeScreen() {
           toValue: 1, // 1 = landed
           duration: FALL_TIME,
           easing: Easing.out(Easing.quad), // fast at first, gentle landing
-          useNativeDriver: false, // same as the drag, so they can share a card
+          useNativeDriver: USE_NATIVE_DRIVER, // same as the drag, so they can share a card
         }),
       ),
     ).start(() => setIsDealing(false)); // all landed: you can swipe now!
@@ -217,7 +268,7 @@ export default function SwipeScreen() {
     }
 
     setCardNumber(nextCard);
-    setStraighten(new Animated.Value(0)); // the new top card starts crooked, then straightens
+    setStraighten(makeNumber(0)); // the new top card starts crooked, then straightens
 
     // Was that the last card in this hand? Then deal a new hand that starts
     // at the next card. New "falls" make the new cards drop in from the sky.
@@ -245,13 +296,13 @@ export default function SwipeScreen() {
     Animated.timing(dragX, {
       toValue: liked ? 500 : -500, // far enough to be off the screen
       duration: 200, // takes 200 milliseconds (a fifth of a second)
-      useNativeDriver: false,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start(() => {
       answer(liked);
       // The next card becomes the top card. Give it a brand new dragX that
       // starts at 0 (the middle). We do NOT slide the old card back: it is
       // gone for good, so nothing jumps or flickers.
-      setDragX(new Animated.Value(0));
+      setDragX(makeNumber(0));
       flying.current = false;
     });
   }
@@ -259,7 +310,7 @@ export default function SwipeScreen() {
   // Let go too early (or the drag got interrupted)? The card bounces back to the middle.
   function springBack() {
     if (flying.current) return; // it's on its way out, leave it alone
-    Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
+    Animated.spring(dragX, { toValue: 0, useNativeDriver: USE_NATIVE_DRIVER }).start();
   }
 
   // The finger-watcher (below) is made only ONCE, so a drag keeps working even
@@ -280,14 +331,23 @@ export default function SwipeScreen() {
       onPanResponderTerminationRequest: () => false,
       // While dragging: the card follows the finger. (dx = how far it has moved sideways)
       onPanResponderMove: (_, finger) => latest.current.dragX.setValue(finger.dx),
-      // When the finger lets go: far right = yes, far left = nope, otherwise bounce back.
+      // When the finger lets go, decide what the swipe meant.
+      //   dx = how far the finger moved sideways (plus = right, minus = left)
+      //   vx = how fast it was moving sideways when it let go
       onPanResponderRelease: (_, finger) => {
-        if (finger.dx > SWIPE_DISTANCE) {
-          latest.current.flyAway(true);
-        } else if (finger.dx < -SWIPE_DISTANCE) {
-          latest.current.flyAway(false);
+        // Dragged far enough?
+        const farRight = finger.dx > SWIPE_DISTANCE;
+        const farLeft = finger.dx < -SWIPE_DISTANCE;
+        // Or flicked quickly? (It must have moved a little, in the same direction.)
+        const flickRight = finger.vx > FLICK_SPEED && finger.dx > FLICK_DISTANCE;
+        const flickLeft = finger.vx < -FLICK_SPEED && finger.dx < -FLICK_DISTANCE;
+
+        if (farRight || flickRight) {
+          latest.current.flyAway(true); // yes!
+        } else if (farLeft || flickLeft) {
+          latest.current.flyAway(false); // nope
         } else {
-          latest.current.springBack();
+          latest.current.springBack(); // not enough: back to the middle
         }
       },
       // Something interrupted the drag (the phone or browser took over)? Bounce back.
@@ -376,6 +436,8 @@ export default function SwipeScreen() {
         <View style={styles.cardStack}>
           {pile.map((place) => {
             const isTop = place === cardNumber;
+            // Is this card near enough to the top to be worth drawing its photo?
+            const nearTop = place < cardNumber + CARDS_WITH_PHOTOS;
 
             // This card's own "fall" number. (place - handStart) is its spot
             // in the hand: 0 for the hand's first card, 9 for its last.
@@ -401,6 +463,7 @@ export default function SwipeScreen() {
                 {...(isTop ? panResponder.panHandlers : {})}
                 style={[
                   styles.stackedCard,
+                  isTop && WEB_MOVING_CARD, // only the top card moves with your finger
                   {
                     opacity: fallOpacity,
                     transform: isTop
@@ -420,7 +483,7 @@ export default function SwipeScreen() {
                         [{ translateY: fallY }, messyTilt(place)],
                   },
                 ]}>
-                <RestaurantCard card={game.deck[place]}>
+                <RestaurantCard card={game.deck[place]} showPhoto={nearTop}>
                   {/* Only the top card needs the glows. */}
                   {isTop && (
                     <>
@@ -428,7 +491,12 @@ export default function SwipeScreen() {
                           nothing (left side) to green (right side). It is invisible
                           until you drag right, because its opacity follows yesGlow. */}
                       <Animated.View
-                        style={[styles.glow, fadeTo('right', colors.yes), { opacity: yesGlow }]}>
+                        style={[
+                          styles.glow,
+                          WEB_FADING_GLOW,
+                          fadeTo('right', colors.yes),
+                          { opacity: yesGlow },
+                        ]}>
                         <View
                           style={[styles.sticker, styles.yesSticker, { borderColor: colors.card }]}>
                           <Text style={[styles.stickerText, { color: colors.card }]}>OH YES</Text>
@@ -437,7 +505,12 @@ export default function SwipeScreen() {
 
                       {/* The RED glow: the mirror image, for dragging left. */}
                       <Animated.View
-                        style={[styles.glow, fadeTo('left', colors.nope), { opacity: nopeGlow }]}>
+                        style={[
+                          styles.glow,
+                          WEB_FADING_GLOW,
+                          fadeTo('left', colors.nope),
+                          { opacity: nopeGlow },
+                        ]}>
                         <View
                           style={[styles.sticker, styles.nopeSticker, { borderColor: colors.card }]}>
                           <Text style={[styles.stickerText, { color: colors.card }]}>NOPE</Text>
