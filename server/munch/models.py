@@ -287,25 +287,6 @@ class InvitesResponse(CamelModel):
     invites: list[RoomInvite]
 
 
-# The special cities with their own logo, by the same names as frontend/src/city.tsx.
-StampCity = Literal["Vancouver", "Toronto", "Edmonton"]
-
-
-class CityStamp(CamelModel):
-    """A passport stamp: the user has used the app in this city."""
-
-    city: StampCity
-    first_visited_at: datetime
-
-
-class StampsResponse(CamelModel):
-    stamps: list[CityStamp]  # oldest first
-
-
-class AddStampRequest(CamelModel):
-    city: StampCity  # worked out on the phone; only the name is sent, never coordinates
-
-
 class SendInvitesRequest(CamelModel):
     user_ids: Annotated[list[str], Field(min_length=1, max_length=20)]
 

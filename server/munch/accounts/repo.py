@@ -19,7 +19,6 @@ from munch.accounts.tokens import (
     new_session_token,
 )
 from munch.models import (
-    CityStamp,
     Friendship,
     FriendshipStatus,
     FriendsResponse,
@@ -304,26 +303,6 @@ async def verify_login_code(pool: Pool, email: str, code: str, max_attempts: int
 
 
 # --- Preferences ----------------------------------------------------------
-
-
-async def list_stamps(pool: Pool, user_id: str) -> list[CityStamp]:
-    rows = await pool.fetch(
-        """SELECT city, first_visited_at FROM user_city_stamps
-           WHERE user_id = $1 ORDER BY first_visited_at, city""",
-        user_id,
-    )
-    return [CityStamp(city=r["city"], first_visited_at=r["first_visited_at"]) for r in rows]
-
-
-async def add_stamp(pool: Pool, user_id: str, city: str) -> list[CityStamp]:
-    """Give the user this city's stamp (a repeat visit changes nothing). Returns them all."""
-    await pool.execute(
-        """INSERT INTO user_city_stamps (user_id, city) VALUES ($1, $2)
-           ON CONFLICT (user_id, city) DO NOTHING""",
-        user_id,
-        city,
-    )
-    return await list_stamps(pool, user_id)
 
 
 async def get_preferences(pool: Pool, user_id: str) -> Preferences:
