@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useRef, useState } from 'react';
 
 import { useAccount } from '@/account';
+import { MyLocation, useMyLocation } from '@/city';
 import { SERVER_URL, SOCKET_URL } from '@/server';
 
 // Where the WEBSITE version of our app lives on the internet, like
@@ -21,9 +22,26 @@ import { SERVER_URL, SOCKET_URL } from '@/server';
 // link that only works while you are testing (see joinLink below).
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? '';
 
-// We don't ask for the phone's location yet, so every room is in downtown Vancouver.
-// TODO: use the phone's real location
+// Where a new game searches for restaurants: around the host (see searchSpot below).
+// We only have restaurants for Vancouver and Burnaby (the area the crawl covered,
+// "vanburnaby" in server/munch/ingest/grid.py), so outside it, or if we don't know where
+// the host is, the game searches downtown Vancouver instead of finding nothing.
 const DOWNTOWN_VANCOUVER = { lat: 49.2827, lng: -123.1207 };
+const AREA_WITH_RESTAURANTS = { minLat: 49.18, maxLat: 49.317, minLng: -123.225, maxLng: -122.89 };
+
+// The spot a new game searches around: the host's location, rounded to 3 decimal places
+// (about 100 m, so friends in the room don't see your exact spot), or downtown Vancouver.
+function searchSpot(here: MyLocation | null) {
+  const area = AREA_WITH_RESTAURANTS;
+  const inArea =
+    here !== null &&
+    here.lat >= area.minLat &&
+    here.lat <= area.maxLat &&
+    here.lng >= area.minLng &&
+    here.lng <= area.maxLng;
+  if (!here || !inArea) return DOWNTOWN_VANCOUVER;
+  return { lat: Math.round(here.lat * 1000) / 1000, lng: Math.round(here.lng * 1000) / 1000 };
+}
 
 // ---------- The shapes of the things the server sends us ----------
 // These copy server/munch/models.py. If that file changes, change these too.
@@ -169,6 +187,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // If we're signed in, rooms we make or join are linked to our account.
   const account = useAccount();
+  // Where the phone is (null = unknown), so a new game searches around the host.
+  const myLocation = useMyLocation();
 
   // The open socket. A "ref" is a box that remembers one thing
   // without redrawing the screen when it changes.
@@ -219,7 +239,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   function createRoom(name: string, radiusM: number, filters: Filters) {
     enterRoom('/api/rooms', name, {
-      center: DOWNTOWN_VANCOUVER,
+      center: searchSpot(myLocation),
       radiusM: radiusM,
       filters: filters,
     });

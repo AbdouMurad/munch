@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -13,16 +14,11 @@ from pydantic import ValidationError
 from munch.accounts.avatars import check_avatar, image_type
 from munch.accounts.errors import AccountError
 from munch.accounts.google import GoogleVerifier
-from munch.accounts.tokens import (
-    hash_login_code,
-    hash_token,
-    login_code_matches,
-    new_login_code,
-    new_session_token,
-)
+from munch.accounts.passwords import LoginLimiter, hash_password, verify_password
+from munch.accounts.tokens import hash_token, new_session_token
 from munch.config import Settings
 from munch.main import create_app
-from munch.models import AddFriendRequest, EmailCodeRequest, UpdateProfileRequest
+from munch.models import AddFriendRequest, RegisterRequest, UpdateProfileRequest
 
 CLIENT_ID = "test-client.apps.googleusercontent.com"
 
@@ -36,12 +32,30 @@ def test_session_token_hash() -> None:
     assert new_session_token()[0] != token
 
 
-def test_login_codes() -> None:
-    code = new_login_code()
-    assert len(code) == 6 and code.isdigit()
-    stored = hash_login_code("a@b.co", code)
-    assert login_code_matches("A@B.co", code, stored)  # email case doesn't matter
-    assert not login_code_matches("other@b.co", code, stored)  # bound to the email
+async def test_password_hashing() -> None:
+    stored = await hash_password("correct horse")
+    assert stored.startswith("scrypt$") and "correct horse" not in stored
+    assert stored != await hash_password("correct horse")  # salted: same password, new hash
+    assert await verify_password("correct horse", stored)
+    assert not await verify_password("Correct horse", stored)
+    assert not await verify_password("correct horse", None)  # no password on the account
+    assert not await verify_password("x", "not-a-hash")
+
+
+def test_login_limiter() -> None:
+    now = [datetime(2026, 1, 1, tzinfo=UTC)]
+    limiter = LoginLimiter(3, timedelta(minutes=15), clock=lambda: now[0])
+    for _ in range(3):
+        limiter.check("Sam@x.co")
+        limiter.failed("sam@x.co")
+    with pytest.raises(AccountError) as e:
+        limiter.check("SAM@x.co")
+    assert e.value.code == "RATE_LIMITED"
+    now[0] += timedelta(minutes=16)  # the lock wears off
+    limiter.check("sam@x.co")
+    limiter.failed("sam@x.co")
+    limiter.succeeded("sam@x.co")  # a right password clears the count
+    limiter.check("sam@x.co")
 
 
 # --- Google ----------------------------------------------------------------
@@ -133,9 +147,12 @@ def test_image_type_sniffing() -> None:
 
 
 def test_account_models_validate() -> None:
-    assert EmailCodeRequest(email="  Sam@Example.COM ").email == "sam@example.com"
+    ok = {"email": "  Sam@Example.COM ", "password": "long enough", "displayName": "Sam"}
+    assert RegisterRequest.model_validate(ok | {"handle": "sam"}).email == "sam@example.com"
     with pytest.raises(ValidationError):
-        EmailCodeRequest(email="not-an-email")
+        RegisterRequest.model_validate(ok | {"handle": "sam", "email": "not-an-email"})
+    with pytest.raises(ValidationError):
+        RegisterRequest.model_validate(ok | {"handle": "sam", "password": "short"})
     with pytest.raises(ValidationError):
         UpdateProfileRequest(handle="no spaces!")
     with pytest.raises(ValidationError):
@@ -152,7 +169,7 @@ def test_account_models_validate() -> None:
 
 def test_accounts_need_the_db() -> None:
     with TestClient(create_app(Settings(database_url=None))) as c:
-        resp = c.post("/api/auth/email/start", json={"email": "a@b.co"})
+        resp = c.post("/api/auth/login", json={"email": "a@b.co", "password": "whatever"})
         assert resp.status_code == 503 and resp.json()["error"]["code"] == "UNAVAILABLE"
         assert c.get("/api/me").status_code == 401  # no token at all
         # guests still create rooms, even with a token the server can't check

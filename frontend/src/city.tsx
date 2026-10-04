@@ -4,9 +4,12 @@
 // taxi for the loading animation. This file:
 //   1. keeps the list of special cities,
 //   2. asks the phone where it is (ONE time, when the app opens),
-//   3. gives every screen ready-made pieces: <Logo />, <Taxi /> and <TaxiLoading />.
+//   3. gives every screen ready-made pieces: <Logo />, <Taxi /> and <TaxiLoading />,
+//   4. remembers where you are (useMyLocation), so a game you START searches for
+//      restaurants around you (see game.tsx).
 //
-// The location never leaves the phone. We only use it to pick a logo.
+// The location only leaves the phone when you start a game: then the room's search spot,
+// rounded to about 100 m, goes to the server. Just opening the app sends nothing.
 
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
@@ -101,10 +104,14 @@ export function findCity(lat: number, lng: number) {
 // ---------- The backpack ----------
 // Holds the city we found, so every screen can use it. null = no special city.
 const CityContext = createContext<City | null>(null);
+// Holds where the phone is. null = we don't know (location off, or still finding out).
+export type MyLocation = { lat: number; lng: number };
+const LocationContext = createContext<MyLocation | null>(null);
 
 // This wraps the whole app (see app/_layout.tsx) and fills the backpack.
 export function CityProvider({ children }: { children: ReactNode }) {
   const [city, setCity] = useState<City | null>(null);
+  const [myLocation, setMyLocation] = useState<MyLocation | null>(null);
 
   // Runs ONE time, when the app opens.
   useEffect(() => {
@@ -115,14 +122,16 @@ export function CityProvider({ children }: { children: ReactNode }) {
         // They said no? That's fine. We keep the normal logo.
         if (!permission.granted) return;
 
-        // 2. Ask the phone where it is. "Lowest" accuracy is plenty:
-        //    we only need to know the city, not the street. It's also the fastest.
+        // 2. Ask the phone where it is. "Balanced" is good to about 100 m: plenty for
+        //    restaurants near you, and still quick. ("Lowest" can be a few km off.)
         const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Lowest,
+          accuracy: Location.Accuracy.Balanced,
         });
+        const { latitude, longitude } = position.coords;
 
-        // 3. Is that spot in one of our special cities?
-        setCity(findCity(position.coords.latitude, position.coords.longitude));
+        // 3. Remember where we are, and check if it's one of our special cities.
+        setMyLocation({ lat: latitude, lng: longitude });
+        setCity(findCity(latitude, longitude));
       } catch {
         // The phone couldn't work out where it is (location switched off,
         // no signal, ...). No problem: we keep the normal logo.
@@ -131,7 +140,16 @@ export function CityProvider({ children }: { children: ReactNode }) {
     whereAmI();
   }, []);
 
-  return <CityContext.Provider value={city}>{children}</CityContext.Provider>;
+  return (
+    <CityContext.Provider value={city}>
+      <LocationContext.Provider value={myLocation}>{children}</LocationContext.Provider>
+    </CityContext.Provider>
+  );
+}
+
+// Where the phone is, as { lat, lng }, or null if we don't know.
+export function useMyLocation() {
+  return useContext(LocationContext);
 }
 
 // Any screen can ask "which special city are we in?" with:  const city = useCity();

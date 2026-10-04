@@ -43,8 +43,8 @@ The server only accepts browser requests from `WEB_ORIGIN` in the repo-root `.en
 
 Signing in is optional; guests can still create and join games.
 
-- **Email sign-in** works everywhere. For now the 6-digit code is printed in the server's
-  terminal (`Login code for you@example.com: 123456`), not emailed.
+- **Email + password** works everywhere. "Create account" asks for name, handle, email and
+  password (8+ characters) on one page; "Sign in" asks for email and password.
 - **Google sign-in** only shows on the web for now. In Google Cloud Console create an OAuth
   client of type *Web application*, add your web address (e.g. `http://localhost:8081`) as an
   authorised JavaScript origin and redirect URI, put its id in `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`

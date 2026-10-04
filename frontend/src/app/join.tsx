@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -7,6 +7,7 @@ import { TaxiLoading } from '@/city';
 import { useGame } from '@/game';
 import { useAccount } from '@/account';
 import { PlayingAs } from '@/components/account-ui';
+import { goBackOrHome } from '@/navigation';
 import { useAppTheme } from '@/theme';
 
 // How many letters are in a lobby code. The server makes codes this long.
@@ -62,7 +63,7 @@ export default function JoinScreen() {
     <Screen>
       {/* ---------- TOP: back button and screen name ---------- */}
       <View style={styles.topBar}>
-        <BackButton onPress={() => router.back()} />
+        <BackButton onPress={goBackOrHome} />
         <Text style={[styles.topTitle, { color: colors.text }]}>Join a game</Text>
       </View>
 

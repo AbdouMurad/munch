@@ -16,7 +16,6 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-from munch.accounts import repo
 from munch.accounts.google import GoogleIdentity
 from munch.config import Settings
 from munch.db.migrate import MIGRATIONS_DIR
@@ -56,7 +55,12 @@ async def build_test_db(admin_url: str) -> str:
             await conn.execute("CREATE EXTENSION citext")
         except asyncpg.PostgresError:  # not installed here; a plain text stand-in will do
             await conn.execute("CREATE DOMAIN citext AS text")
-        for name in ("003_accounts.sql", "004_room_invites.sql", "005_user_avatars.sql"):
+        for name in (
+            "003_accounts.sql",
+            "004_room_invites.sql",
+            "005_user_avatars.sql",
+            "008_email_passwords.sql",
+        ):
             sql = (MIGRATIONS_DIR / name).read_text()
             await conn.execute(sql.replace("CREATE EXTENSION IF NOT EXISTS citext;", ""))
         ids = [r["id"] for r in load_fixtures()]
@@ -84,11 +88,10 @@ class FakeGoogle:
 def client(test_db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     async def wipe() -> None:
         conn = await asyncpg.connect(test_db_url)
-        await conn.execute("TRUNCATE users, email_login_codes, room_invites CASCADE")
+        await conn.execute("TRUNCATE users, room_invites CASCADE")
         await conn.close()
 
     asyncio.run(wipe())
-    monkeypatch.setattr(repo, "new_login_code", lambda: "123456")
     with TestClient(create_app(Settings(database_url=test_db_url))) as c:
         state: AppState = c.app.state.munch  # type: ignore[attr-defined]
         state.google = FakeGoogle()  # type: ignore[assignment]
@@ -96,15 +99,34 @@ def client(test_db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestCl
         yield c
 
 
-def sign_in(c: TestClient, email: str, handle: str | None = None) -> dict[str, Any]:
-    assert c.post("/api/auth/email/start", json={"email": email}).status_code == 204
-    resp = c.post("/api/auth/email/verify", json={"email": email, "code": "123456"})
-    assert resp.status_code == 200, resp.json()
-    body: dict[str, Any] = resp.json()
+PASSWORD = "correct horse"
+
+
+def with_headers(body: dict[str, Any]) -> dict[str, Any]:
     body["headers"] = {"Authorization": f"Bearer {body['sessionToken']}"}
-    if handle:
-        assert c.patch("/api/me", json={"handle": handle}, headers=body["headers"]).is_success
     return body
+
+
+def sign_in(c: TestClient, email: str, handle: str | None = None) -> dict[str, Any]:
+    """Register an email + password account (handle defaults to the start of the email)."""
+    resp = c.post(
+        "/api/auth/register",
+        json={
+            "email": email,
+            "password": PASSWORD,
+            "displayName": email.split("@")[0].title(),
+            "handle": handle or email.split("@")[0],
+        },
+    )
+    assert resp.status_code == 201, resp.json()
+    return with_headers(resp.json())
+
+
+def google_user(c: TestClient, sub: str, email: str = "") -> dict[str, Any]:
+    """Sign in with (fake) Google: no handle until one is picked."""
+    resp = c.post("/api/auth/google", json={"idToken": f"{sub}:{email}"})
+    assert resp.status_code == 200, resp.json()
+    return with_headers(resp.json())
 
 
 def befriend(c: TestClient, a: dict[str, Any], b: dict[str, Any]) -> None:
@@ -122,32 +144,44 @@ def wait_for(cond: Any, timeout: float = 2.0) -> None:
 # --- sign-in ---------------------------------------------------------------
 
 
-def test_email_sign_in_flow(client: TestClient) -> None:
-    sam = sign_in(client, "Sam@Example.com")
+def test_register_and_log_in(client: TestClient) -> None:
+    sam = sign_in(client, "Sam@Example.com", handle="sam_eats")
     assert sam["isNew"] and sam["user"]["email"] == "sam@example.com"
-    assert sam["user"]["displayName"] == "sam" and sam["user"]["handle"] is None
-    again = sign_in(client, "sam@example.com")
-    assert not again["isNew"] and again["user"]["id"] == sam["user"]["id"]
+    assert sam["user"]["displayName"] == "Sam" and sam["user"]["handle"] == "sam_eats"
 
-    me = client.get("/api/me", headers=sam["headers"])
+    resp = client.post("/api/auth/login", json={"email": "SAM@example.com", "password": PASSWORD})
+    assert resp.status_code == 200
+    again = with_headers(resp.json())
+    assert not again["isNew"] and again["user"]["id"] == sam["user"]["id"]
+    me = client.get("/api/me", headers=again["headers"])
     assert me.status_code == 200 and me.json()["id"] == sam["user"]["id"]
 
 
-def test_wrong_code_and_attempt_limit(client: TestClient) -> None:
-    client.post("/api/auth/email/start", json={"email": "x@y.co"})
-    for _ in range(5):
-        resp = client.post("/api/auth/email/verify", json={"email": "x@y.co", "code": "000000"})
-        assert resp.status_code == 400 and resp.json()["error"]["code"] == "INVALID_CODE"
-    # attempts used up: even the right code no longer works
-    resp = client.post("/api/auth/email/verify", json={"email": "x@y.co", "code": "123456"})
-    assert resp.status_code == 400
-
-
-def test_code_rate_limit(client: TestClient) -> None:
-    for _ in range(5):
-        assert client.post("/api/auth/email/start", json={"email": "r@y.co"}).status_code == 204
-    resp = client.post("/api/auth/email/start", json={"email": "r@y.co"})
+def test_wrong_password_and_lockout(client: TestClient) -> None:
+    sign_in(client, "sam@example.com")
+    for email in ("sam@example.com", "nobody@example.com"):
+        resp = client.post("/api/auth/login", json={"email": email, "password": "wrong pass"})
+        assert resp.status_code == 401
+        # same answer for a wrong password and an unknown email
+        assert resp.json()["error"]["message"] == "Wrong email or password"
+    for _ in range(9):  # 10 wrong in total for sam
+        client.post("/api/auth/login", json={"email": "sam@example.com", "password": "nope nope"})
+    resp = client.post("/api/auth/login", json={"email": "sam@example.com", "password": PASSWORD})
     assert resp.status_code == 429 and resp.json()["error"]["code"] == "RATE_LIMITED"
+
+
+def test_register_errors(client: TestClient) -> None:
+    sign_in(client, "sam@example.com", handle="sam")
+    body = {"email": "SAM@example.com", "password": PASSWORD, "displayName": "S", "handle": "s2m"}
+    resp = client.post("/api/auth/register", json=body)
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "EMAIL_TAKEN"
+    body |= {"email": "other@example.com", "handle": "@SAM"}
+    resp = client.post("/api/auth/register", json=body)
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "HANDLE_TAKEN"
+    body |= {"handle": "other", "password": "short"}
+    resp = client.post("/api/auth/register", json=body)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["message"] == "Passwords need at least 8 characters"
 
 
 def test_google_links_to_email_account(client: TestClient) -> None:
@@ -155,20 +189,26 @@ def test_google_links_to_email_account(client: TestClient) -> None:
     resp = client.post("/api/auth/google", json={"idToken": "g-1:sam@example.com"})
     assert resp.status_code == 200
     assert resp.json()["user"]["id"] == by_email["user"]["id"] and not resp.json()["isNew"]
+    # Google proved who owns the address, so the (unproven) password stops working and its
+    # sessions end: someone who registered another person's email can't keep the account.
+    resp = client.post("/api/auth/login", json={"email": "sam@example.com", "password": PASSWORD})
+    assert resp.status_code == 401
+    assert client.get("/api/me", headers=by_email["headers"]).status_code == 401
     # a Google account without a verified email gets its own account
     resp = client.post("/api/auth/google", json={"idToken": "g-2:"})
     assert resp.json()["isNew"] and resp.json()["user"]["email"] is None
 
 
 def test_google_picture_is_the_default(client: TestClient) -> None:
-    # made with an email code: no picture yet
+    # made with email + password: no picture yet
     by_email = sign_in(client, "sam@example.com")
     assert by_email["user"]["avatarUrl"] is None
     # first Google sign-in with the same address fills in the Google picture
     resp = client.post("/api/auth/google", json={"idToken": "g-1:sam@example.com"})
     assert resp.json()["user"]["avatarUrl"] == "https://p"
     # an uploaded picture is never replaced by Google's
-    headers = {**by_email["headers"], "Content-Type": "image/jpeg"}
+    google_headers = {"Authorization": f"Bearer {resp.json()['sessionToken']}"}
+    headers = {**google_headers, "Content-Type": "image/jpeg"}
     mine = client.put("/api/me/avatar", content=JPEG, headers=headers).json()["avatarUrl"]
     resp = client.post("/api/auth/google", json={"idToken": "g-1:sam@example.com"})
     assert resp.json()["user"]["avatarUrl"] == mine
@@ -184,12 +224,13 @@ def test_logout(client: TestClient) -> None:
 
 
 def test_profile_and_handle(client: TestClient) -> None:
-    sam = sign_in(client, "sam@example.com")
+    sam = google_user(client, "g-sam", "sam@example.com")
+    assert sam["user"]["handle"] is None
     resp = client.patch(
         "/api/me", json={"handle": "sam_eats", "displayName": "Sam"}, headers=sam["headers"]
     )
     assert resp.json()["handle"] == "sam_eats" and resp.json()["displayName"] == "Sam"
-    alex = sign_in(client, "alex@example.com")
+    alex = google_user(client, "g-alex", "alex@example.com")
     resp = client.patch("/api/me", json={"handle": "@sam_eats"}, headers=alex["headers"])
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "HANDLE_TAKEN"
     assert resp.json()["error"]["message"] == "@sam_eats is taken"

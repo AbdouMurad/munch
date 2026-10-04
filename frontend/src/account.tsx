@@ -101,8 +101,14 @@ type Account = {
   invites: Invite[]; // friends asking me to join their game
   // Send a request to the server, signed in as me. Throws an Error with the server's message.
   api: <T>(path: string, method?: string, body?: object) => Promise<T>;
-  emailStart: (email: string) => Promise<void>;
-  emailVerify: (email: string, code: string) => Promise<SignedIn>;
+  // Email + password. register also sets the name and handle friends will see.
+  register: (details: {
+    email: string;
+    password: string;
+    displayName: string;
+    handle: string;
+  }) => Promise<SignedIn>;
+  logIn: (email: string, password: string) => Promise<SignedIn>;
   googleSignIn: (idToken: string) => Promise<SignedIn>;
   signOut: () => Promise<void>;
   setMe: (me: Me) => void;
@@ -165,12 +171,17 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     return result;
   }
 
-  async function emailStart(email: string) {
-    await request('/api/auth/email/start', 'POST', { email }, null);
+  async function register(details: {
+    email: string;
+    password: string;
+    displayName: string;
+    handle: string;
+  }) {
+    return finishSignIn(await request<SignedIn>('/api/auth/register', 'POST', details, null));
   }
 
-  async function emailVerify(email: string, code: string) {
-    const result = await request<SignedIn>('/api/auth/email/verify', 'POST', { email, code }, null);
+  async function logIn(email: string, password: string) {
+    const result = await request<SignedIn>('/api/auth/login', 'POST', { email, password }, null);
     return finishSignIn(result);
   }
 
@@ -292,8 +303,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         token,
         invites,
         api,
-        emailStart,
-        emailVerify,
+        register,
+        logIn,
         googleSignIn,
         signOut,
         setMe,

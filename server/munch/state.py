@@ -8,6 +8,7 @@ from fastapi import Depends
 from starlette.requests import HTTPConnection
 
 from munch.accounts.google import GoogleVerifier
+from munch.accounts.passwords import LoginLimiter
 from munch.config import Settings
 from munch.photos.service import PhotoService
 from munch.realtime.hub import Hub
@@ -24,6 +25,7 @@ class AppState:
     db_pool: "asyncpg.Pool[asyncpg.Record] | None"
     user_hub: Hub  # /ws/me sockets, keyed by user id
     google: GoogleVerifier
+    login_limiter: LoginLimiter
     photos: PhotoService | None = None  # needs both the DB and the Google key
 
 
