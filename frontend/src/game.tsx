@@ -88,8 +88,9 @@ export type Room = {
   code: string;
   status: string; // "lobby", "swiping", "matched", "exhausted", or "closed"
   members: Member[];
-  radiusM: number;
+  radiusM: number; // how far we search, in meters (the host can make it bigger)
   deckSize: number; // how many cards are in the game (0 until it starts)
+  matchThreshold: number; // how many likes a restaurant needs to win (2/3 of us)
 };
 
 // Our ticket into the room. The server gives us this when we create or join.
@@ -109,8 +110,8 @@ export type Filters = {
 };
 
 // How the game ended.
-//   matched = true  -> EVERYONE liked the first pick. We have a winner!
-//   matched = false -> nobody agreed, so picks are just the most-liked spots.
+//   matched = true  -> enough of us liked the same restaurant: picks[0] is the winner.
+//   matched = false -> everyone ran out of cards, so picks are the most-liked spots.
 export type Result = {
   matched: boolean;
   picks: { card: Card; likes: number }[];
@@ -127,6 +128,9 @@ type Game = {
   myNope: number; // how many times I said nope
   result: Result | null; // null = the game isn't over yet
   error: string; // a problem to show the person ('' = no problem)
+  searchFarther: () => void; // host only: add restaurants from farther away
+  resumeSwiping: (atCard: number) => void; // back to swiping after new cards arrived
+  playAgain: () => void; // game over: back to this room's lobby for another round
   loadingCards: boolean; // true while we download the first photos, right after Start
   connecting: boolean; // true from pressing Create/Join until the lobby opens
   createRoom: (name: string, radiusM: number, filters: Filters) => void;
@@ -266,6 +270,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // The host searched farther. New restaurants go on the END of everyone's deck
+      // (the server makes sure none of them were in the game already).
+      if (message.type === 'room:deck_extended') {
+        preloadPhotos(payload.cards.slice(0, PRELOAD_AHEAD));
+        setDeck((oldDeck) => [...oldDeck, ...payload.cards]);
+      }
+
       // The host pressed Start. Here are the cards! Everyone goes to the swipe screen.
       if (message.type === 'room:started') {
         setDeck(payload.deck);
@@ -287,7 +298,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // Everyone liked the same restaurant. We have a winner!
+      // Enough of us liked the same restaurant. We have a winner!
       if (message.type === 'room:matched') {
         setResult({
           matched: true,
@@ -358,6 +369,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Host only: search 2 km farther. The server sends everyone the new cards
+  // (room:deck_extended), or an error if there's nothing new out there.
+  function searchFarther() {
+    setError('');
+    send('room:expand', {});
+  }
+
+  // We finished our cards, then new ones arrived: go back and swipe from card "atCard".
+  function resumeSwiping(atCard: number) {
+    setStartAt(atCard);
+    router.replace('/swipe');
+  }
+
+  // Game over: put this room back in the lobby (the server does it for everyone, and
+  // it's fine if a friend already did) and go there. Same code, same friends.
+  function playAgain() {
+    setError('');
+    setResult(null);
+    send('room:replay', {});
+    router.replace('/lobby');
+  }
+
   // Say goodbye, hang up, and go back to the home screen.
   function leaveRoom() {
     const socket = socketRef.current;
@@ -383,6 +416,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         myNope,
         result,
         error,
+        searchFarther,
+        resumeSwiping,
+        playAgain,
         loadingCards,
         connecting,
         createRoom,

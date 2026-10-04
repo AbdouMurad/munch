@@ -184,7 +184,13 @@ async def test_dealing_a_deck_warms_its_first_photos() -> None:
         for i in range(30)
     ]
 
-    async def build(center: LatLng, radius_m: int, filters: Filters, seed: int) -> list[Card]:
+    async def build(
+        center: LatLng,
+        radius_m: int,
+        filters: Filters,
+        seed: int,
+        exclude: frozenset[str] = frozenset(),
+    ) -> list[Card]:
         return deck
 
     dealt = await with_photo_warmup(build, svc)(LatLng(lat=0, lng=0), 1000, Filters(), 1)

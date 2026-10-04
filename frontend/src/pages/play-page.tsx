@@ -1,38 +1,31 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { CardTaxi, Logo, useCity } from '@/city';
 import { InvitesInbox } from '@/components/account-ui';
-import { ChunkyButton } from '@/components/ui';
+import { ChunkyButton, DarkModeSwitch } from '@/components/ui';
 import { useAppTheme } from '@/theme';
 
 // PLAY PAGE: the middle page of the home screen. Start a game or join one.
 // (Profile is one swipe to the right, Friends one swipe to the left.)
 export default function PlayPage() {
-  // Grab our colors, and the switch that flips light/dark mode.
-  const { colors, isDark, toggleDark } = useAppTheme();
+  // Grab our colors.
+  const { colors } = useAppTheme();
   // Which special city we're in (Vancouver, Toronto, Edmonton), or null for none.
   const city = useCity();
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* ---------- TOP: the app name and the light/dark button ---------- */}
+      {/* ---------- TOP: the app name and the dark mode switch ---------- */}
       <View style={styles.topBar}>
         {/* The logo. In Vancouver, Toronto or Edmonton it's that city's special
             logo; anywhere else it's just the word "munch" (see city.tsx). */}
         <View style={styles.appName}>
           <Logo />
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          onPress={toggleDark}
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            {isDark ? 'LIGHT' : 'DARK'}
-          </Text>
-        </Pressable>
+        {/* On/off switch for dark mode: a sun or a moon slides across. */}
+        <DarkModeSwitch />
       </View>
 
       {/* Friends asking you to join their game (only when signed in). */}
@@ -123,17 +116,6 @@ const styles = StyleSheet.create({
     flex: 1, // pushes the buttons to the right
     alignItems: 'flex-start', // keep the logo on the left, at its own size
   },
-  themeButton: {
-    borderWidth: 2,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  themeButtonText: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-
   // The middle part grows to fill the leftover space and centers its stuff.
   middle: {
     flex: 1,

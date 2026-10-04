@@ -7,17 +7,30 @@ signature is the interface.
 import json
 import math
 import random
-from collections.abc import Awaitable, Callable
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from munch.models import Card, Filters, LatLng
 
 FIXTURE_PATH = Path(__file__).with_name("fixture_restaurants.json")
 EARTH_RADIUS_M = 6_371_000
 
-DeckBuilder = Callable[[LatLng, int, Filters, int], Awaitable[list[Card]]]
+NO_EXCLUDE: frozenset[str] = frozenset()
+
+
+class DeckBuilder(Protocol):
+    """Builds a room's deck. `exclude` holds restaurant ids that must not be dealt (the
+    cards already in the deck, when the host searches farther mid-game)."""
+
+    async def __call__(
+        self,
+        center: LatLng,
+        radius_m: int,
+        filters: Filters,
+        seed: int,
+        exclude: frozenset[str] = NO_EXCLUDE,
+    ) -> list[Card]: ...
 
 
 @cache
@@ -43,7 +56,12 @@ def matches_filters(row: dict[str, Any], filters: Filters) -> bool:
 
 
 def fixture_deck(
-    center: LatLng, radius_m: int, filters: Filters, seed: int, size: int = 80
+    center: LatLng,
+    radius_m: int,
+    filters: Filters,
+    seed: int,
+    size: int = 80,
+    exclude: frozenset[str] = NO_EXCLUDE,
 ) -> list[Card]:
     """Filtered fixtures in a seeded shuffle. Ignores the radius if nothing is inside it, so
     a room created far from Vancouver still gets a deck in dev."""
@@ -63,7 +81,7 @@ def fixture_deck(
             maps_uri=r["maps_uri"],
         )
         for r in load_fixtures()
-        if matches_filters(r, filters)
+        if matches_filters(r, filters) and r["id"] not in exclude
     ]
     cards.sort(key=lambda c: c.id)
     nearby = [c for c in cards if c.distance_m <= radius_m] or cards
@@ -72,6 +90,10 @@ def fixture_deck(
 
 
 async def build_fixture_deck(
-    center: LatLng, radius_m: int, filters: Filters, seed: int
+    center: LatLng,
+    radius_m: int,
+    filters: Filters,
+    seed: int,
+    exclude: frozenset[str] = NO_EXCLUDE,
 ) -> list[Card]:
-    return fixture_deck(center, radius_m, filters, seed)
+    return fixture_deck(center, radius_m, filters, seed, exclude=exclude)

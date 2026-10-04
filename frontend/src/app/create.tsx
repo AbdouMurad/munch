@@ -96,7 +96,7 @@ export default function CreateScreen() {
           ]}
           value={name}
           onChangeText={setName}
-          placeholder="Sam"
+          placeholder="James"
           placeholderTextColor={colors.softText}
           maxLength={24} // the server's limit for names
         />

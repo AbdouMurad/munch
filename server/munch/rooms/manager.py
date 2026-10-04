@@ -5,8 +5,11 @@ and returns what happened. Every method is synchronous, so no caller can `await`
 check and the update it guards.
 """
 
+import math
+import random
 import secrets
 import uuid
+from bisect import bisect_right
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -27,9 +30,38 @@ from munch.models import (
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I
 CODE_LENGTH = 6
 TOP_PICKS = 3
+EXPAND_STEP_M = 2000  # "search farther" adds this much radius by default
+MAX_RADIUS_M = 50_000  # Places/PostGIS sanity cap, same as models.RadiusM
+# Each player swipes the deck in their own order: a card moves up to this many places
+# from its ranked position, so the best places stay near the front for everyone but
+# nobody sees the same sequence as their friends.
+SHUFFLE_WINDOW = 12
 TERMINAL: frozenset[RoomStatus] = frozenset({"matched", "exhausted", "closed"})
 
 Outcome = RoomMatchedPayload | RoomExhaustedPayload
+
+
+def personal_order(
+    deck: list[Card], batch_starts: list[int], seed: int, member_id: str
+) -> list[Card]:
+    """One player's order of the room's deck: the same cards, nudged around by up to
+    SHUFFLE_WINDOW places. Deterministic per (room seed, member), so a reconnect gets the
+    same order. Cards from a later "search farther" batch always come after earlier ones,
+    so appending a batch never reorders cards a player has already swiped."""
+
+    def key(item: tuple[int, Card]) -> tuple[int, float]:
+        i, card = item
+        batch = bisect_right(batch_starts, i) - 1
+        nudge = random.Random(f"{seed}:{member_id}:{card.id}").uniform(0, SHUFFLE_WINDOW)
+        return batch, i + nudge
+
+    return [card for _, card in sorted(enumerate(deck), key=key)]
+
+
+def match_threshold(active: int) -> int:
+    """Likes a restaurant needs to match: two thirds of the active players, rounded up.
+    2 players -> 2, 3 -> 2, 4 -> 3, 5 -> 4, 6 -> 4. A pair still has to agree."""
+    return max(1, math.ceil(2 * active / 3))
 
 
 class RoomError(Exception):
@@ -75,11 +107,18 @@ class LiveRoom:
     likes: dict[str, set[str]] = field(default_factory=dict)  # restaurant_id → member ids
     swiped: dict[str, set[str]] = field(default_factory=dict)  # member_id → restaurant ids
     starting: bool = False  # deck is being built; blocks a second Start
+    expanding: bool = False  # extra cards are being built; blocks a second "search farther"
+    expansions: int = 0  # how many times the search was widened (varies the seed)
+    batch_starts: list[int] = field(default_factory=lambda: [0])  # deck index of each batch
     ended_at: datetime | None = None
     outcome: Outcome | None = None  # replayed to clients that reconnect after the end
 
     def active_members(self) -> list[LiveMember]:
         return [m for m in self.members.values() if m.active]
+
+    def deck_for(self, member_id: str) -> list[Card]:
+        """The deck in this member's own order (see personal_order)."""
+        return personal_order(self.deck, self.batch_starts, self.seed, member_id)
 
     def to_state(self) -> RoomState:
         return RoomState(
@@ -101,13 +140,23 @@ class LiveRoom:
             radius_m=self.radius_m,
             filters=self.filters,
             deck_size=len(self.deck),
+            match_threshold=match_threshold(len(self.active_members())),
         )
 
 
 @dataclass
 class SwipeResult:
     progress: int
-    outcome: Outcome | None
+    outcome: Outcome | None  # the game just ended: a match, or everyone ran out of cards
+
+
+@dataclass
+class Expansion:
+    """What the caller needs to build the extra cards for a "search farther"."""
+
+    radius_m: int
+    seed: int
+    exclude: frozenset[str]  # every restaurant already dealt, never dealt twice
 
 
 @dataclass
@@ -222,6 +271,7 @@ class RoomManager:
             return None
         room.status = "swiping"
         room.deck = deck
+        room.batch_starts = [0]
         room.likes = {}
         room.swiped = {m.id: set() for m in room.members.values()}
         room.last_activity = self._clock()
@@ -249,12 +299,67 @@ class RoomManager:
             room.likes.setdefault(restaurant_id, set()).add(member_id)
         room.last_activity = self._clock()
 
-        outcome: Outcome | None = None
-        if liked:
-            outcome = self._check_match(room, [restaurant_id])
-        if outcome is None:
-            outcome = self._check_exhausted(room)
-        return SwipeResult(progress=member.progress, outcome=outcome)
+        outcome = self._check_match(room, [restaurant_id]) if liked else None
+        return SwipeResult(progress=member.progress, outcome=outcome or self._check_exhausted(room))
+
+    # --- Searching farther and playing again ----------------------------------
+
+    def begin_expand(self, room: LiveRoom, member_id: str, radius_m: int | None) -> Expansion:
+        """Validate a "search farther" and lock it while the caller builds the cards."""
+        if not room.members[member_id].is_host:
+            raise RoomError("NOT_HOST", "Only the host can search farther")
+        if room.status != "swiping" or room.expanding:
+            raise RoomError("BAD_STATE", "Can't search farther right now")
+        new_radius = min(radius_m or room.radius_m + EXPAND_STEP_M, MAX_RADIUS_M)
+        if new_radius <= room.radius_m:
+            raise RoomError("BAD_STATE", "Already searching as far as possible")
+        room.expanding = True
+        room.last_activity = self._clock()
+        return Expansion(
+            radius_m=new_radius,
+            seed=room.seed + room.expansions + 1,
+            exclude=frozenset(c.id for c in room.deck),
+        )
+
+    def replay(self, room: LiveRoom) -> None:
+        """Play again: once the game is over, any player puts the room back in the lobby.
+        Same code and players (anyone who left stays gone, new friends can join), a fresh
+        seed, and nothing carried over from the last game except the search radius."""
+        if room.status == "lobby":
+            return  # someone else already pressed Play again
+        if room.status not in ("matched", "exhausted"):
+            raise RoomError("BAD_STATE", "The game isn't over yet")
+        room.status = "lobby"
+        room.seed = secrets.randbits(63)
+        room.deck = []
+        room.batch_starts = [0]
+        room.likes = {}
+        room.swiped = {}
+        room.outcome = None
+        room.ended_at = None
+        room.expansions = 0
+        room.starting = room.expanding = False
+        for m in room.members.values():
+            m.progress = 0
+        room.last_activity = self._clock()
+
+    def abort_expand(self, room: LiveRoom) -> None:
+        room.expanding = False
+
+    def finish_expand(self, room: LiveRoom, radius_m: int, cards: list[Card]) -> list[Card]:
+        """Append the new cards (skipping any already dealt). Returns what was added."""
+        room.expanding = False
+        if room.status != "swiping":  # the game ended while the cards were building
+            return []
+        dealt = {c.id for c in room.deck}
+        added = [c for c in cards if c.id not in dealt]
+        if added:
+            room.batch_starts.append(len(room.deck))
+        room.deck.extend(added)
+        room.radius_m = radius_m
+        room.expansions += 1
+        room.last_activity = self._clock()
+        return added
 
     # --- Leaving and connections ----------------------------------------------
 
@@ -279,7 +384,7 @@ class RoomManager:
             return None
         if room.status != "swiping":
             return None
-        # The quorum shrank, so a restaurant that wasn't unanimous before might be now.
+        # The quorum shrank, so the bar dropped: a restaurant just short of it may match now.
         return self._check_match(room, [c.id for c in room.deck]) or self._check_exhausted(room)
 
     def connect(self, member: LiveMember) -> None:
@@ -355,13 +460,15 @@ class RoomManager:
         room.outcome = outcome
 
     def _check_match(self, room: LiveRoom, restaurant_ids: list[str]) -> Outcome | None:
-        """First restaurant (in the given order) liked by every active member wins."""
-        active = [m.id for m in room.active_members()]
+        """The first restaurant (in the given order) liked by at least match_threshold active
+        members wins, and the game ends."""
+        active = {m.id for m in room.active_members()}
         if not active:
             return None
+        needed = match_threshold(len(active))
         for rid in restaurant_ids:
-            likers = room.likes.get(rid, set())
-            if all(mid in likers for mid in active):
+            likers = room.likes.get(rid, set()) & active
+            if len(likers) >= needed:
                 card = next(c for c in room.deck if c.id == rid)
                 liked_by = [mid for mid in room.members if mid in likers]
                 matched = RoomMatchedPayload(card=card, liked_by=liked_by)
