@@ -8,6 +8,7 @@ from fastapi import Depends
 from starlette.requests import HTTPConnection
 
 from munch.config import Settings
+from munch.photos.service import PhotoService
 from munch.realtime.hub import Hub
 from munch.rooms.fixture_deck import DeckBuilder
 from munch.rooms.manager import RoomManager
@@ -20,6 +21,7 @@ class AppState:
     hub: Hub
     build_deck: DeckBuilder
     db_pool: "asyncpg.Pool[asyncpg.Record] | None"
+    photos: PhotoService | None = None  # needs both the DB and the Google key
 
 
 def get_state(conn: HTTPConnection) -> AppState:
