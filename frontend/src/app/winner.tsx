@@ -1,50 +1,49 @@
-import { Image } from 'expo-image';
 import { Redirect } from 'expo-router';
+import { useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ChunkyBox, ChunkyButton, Eye, Screen } from '@/components/ui';
-import { describe, photoAddress, useGame } from '@/game';
+import { ResultItem, ResultStack } from '@/components/result-stack';
+import { ChunkyButton, Eye, Screen } from '@/components/ui';
+import { Result, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // WINNER SCREEN: the game is over, here is where we're eating!
 // The server decides how the game ended and game.tsx saves it in "result":
-//   - matched:     EVERYONE liked the same restaurant.
-//   - not matched: nobody agreed, so we show the most-liked restaurants.
+//   - matched:     enough of us liked the same restaurant. That's the winner.
+//   - not matched: everyone ran out of cards, so we show the most-liked restaurants.
+// They show up as a pile of cards: swipe the top one to send it to the bottom.
 export default function WinnerScreen() {
   const { colors } = useAppTheme();
   const game = useGame();
   const room = game.room;
   const result = game.result;
 
+  // Which restaurant is on top of the pile right now (for the Directions button).
+  const [topId, setTopId] = useState<string | null>(null);
+  // Lets the "Next" button flip the pile, same as a swipe (handy on a computer).
+  const flipRef = useRef<(() => void) | null>(null);
+
   // No room or no result yet (for example, the page was refreshed)? Go back home.
   if (!room || !result) return <Redirect href="/" />;
 
-  // The first pick is the winner. The rest are the runners-up.
-  // "winner" is empty if nobody liked anything at all.
-  const winner = result.picks[0];
-  const runnersUp = result.picks.slice(1);
-  // The winner's photo. It was already downloaded while swiping, so it shows right away.
-  const winnerPhoto = winner ? photoAddress(winner.card) : null;
+  const items = resultItems(result);
+  const top = items.find((item) => item.card.id === topId) ?? items[0];
 
   return (
     <Screen>
-      {/* ---------- TOP: lobby code and "Play again" ---------- */}
-      <View style={styles.row}>
+      {/* ---------- TOP: lobby code and "Leave" ---------- */}
+      <View>
         <Text style={[styles.gameName, { color: colors.text }]}>Lobby {room.code}</Text>
-        <Pressable
-          accessibilityRole="button"
-          // Leave this room and go back to the home screen.
-          onPress={game.leaveRoom}
-          style={[styles.againButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
-          <Text style={[styles.againText, { color: colors.text }]}>Play again</Text>
+        <Pressable accessibilityRole="button" onPress={game.leaveRoom}>
+          <Text style={[styles.leave, { color: colors.softText }]}>Leave</Text>
         </Pressable>
       </View>
 
-      {!winner ? (
+      {!top ? (
         // ---------- There is nothing to show ----------
         <View style={styles.nothing}>
           <Eye size={110} />
-          <Text style={[styles.winnerName, { color: colors.text }]}>No winner this time</Text>
+          <Text style={[styles.title, { color: colors.text }]}>No winner this time</Text>
           <Text style={[styles.nothingText, { color: colors.softText }]}>
             {room.deckSize === 0
               ? // The server found no restaurants that fit the host's rules.
@@ -54,84 +53,75 @@ export default function WinnerScreen() {
         </View>
       ) : (
         <>
-          <Text style={[styles.intro, { color: colors.text }]}>
-            {result.matched ? "Tonight you're eating at" : 'Nobody agreed, but the top pick is'}
-          </Text>
+          <Text style={[styles.intro, { color: colors.text }]}>{intro(result)}</Text>
 
-          {/* ---------- The winning restaurant ---------- */}
-          <ChunkyBox background={colors.card} radius={20}>
-            {/* The restaurant photo, with the eye mascot underneath in case
-                there is no photo (or it is still loading). */}
-            <View style={[styles.photo, { backgroundColor: colors.soft }]}>
-              <Eye size={140} />
-              {winnerPhoto && (
-                <Image
-                  source={winnerPhoto}
-                  style={styles.photoImage}
-                  contentFit="cover" // fill the box, cropping the edges if needed
-                  transition={150} // fade in instead of popping in
-                  accessibilityLabel={`Photo of ${winner.card.name}`}
-                />
-              )}
-              {/* The sticker comes after the photo, so it sits on top of it. */}
-              <View
-                style={[
-                  styles.sticker,
-                  { backgroundColor: colors.accent, borderColor: colors.text },
-                ]}>
-                <Text style={[styles.stickerText, { color: colors.onAccent }]}>
-                  {result.matched ? '♛ WINNER' : 'TOP PICK'}
-                </Text>
-              </View>
+          {/* ---------- All the restaurants, as a pile of cards ---------- */}
+          <ResultStack
+            items={items}
+            memberCount={room.members.length}
+            onTopChange={setTopId}
+            flipRef={flipRef}
+          />
+
+          {/* More than one? Say so, and give computers a button to flip through. */}
+          {items.length > 1 && (
+            <View style={styles.row}>
+              <Text style={{ color: colors.softText }}>Swipe to see all {items.length}</Text>
+              <Pressable accessibilityRole="button" onPress={() => flipRef.current?.()}>
+                <Text style={[styles.next, { color: colors.text }]}>Next ›</Text>
+              </Pressable>
             </View>
+          )}
 
-            <View style={styles.info}>
-              <Text style={[styles.winnerName, { color: colors.text }]}>{winner.card.name}</Text>
-              {/* Something like "Ramen · $$ · 1.2 km" */}
-              <Text style={{ color: colors.softText }}>{describe(winner.card)}</Text>
-              <Text style={[styles.votes, { color: colors.text }]}>
-                {winner.likes} of {room.members.length} said yes
-              </Text>
-            </View>
-          </ChunkyBox>
-
-          {/* Only show Directions if the server gave us a maps link. */}
-          {winner.card.mapsUri && (
+          {/* Directions to whichever restaurant is on top (if the server gave us a link). */}
+          {top.card.mapsUri && (
             <ChunkyButton
-              label="Directions"
+              label="Get directions" // to the card on top (its name is right above)
               primary
-              onPress={() => Linking.openURL(winner.card.mapsUri!)}
+              onPress={() => Linking.openURL(top.card.mapsUri!)}
             />
           )}
-
-          {/* ---------- The restaurants that almost won ---------- */}
-          {runnersUp.length > 0 && (
-            <Text style={[styles.label, { color: colors.text }]}>Runners-up</Text>
-          )}
-          {runnersUp.map((pick, i) => (
-            <View
-              key={pick.card.id}
-              style={[styles.runnerUp, { backgroundColor: colors.card, borderColor: colors.text }]}>
-              {/* Their place: the first runner-up came 2nd, the next came 3rd... */}
-              <View
-                style={[styles.place, { backgroundColor: colors.soft, borderColor: colors.text }]}>
-                <Text style={[styles.placeText, { color: colors.text }]}>{i + 2}</Text>
-              </View>
-
-              <View style={styles.runnerUpInfo}>
-                <Text style={[styles.runnerUpName, { color: colors.text }]}>{pick.card.name}</Text>
-                <Text style={{ color: colors.softText }}>{describe(pick.card)}</Text>
-              </View>
-
-              <Text style={[styles.runnerUpVotes, { color: colors.text }]}>
-                {pick.likes}/{room.members.length}
-              </Text>
-            </View>
-          ))}
         </>
       )}
+
+      {/* This empty box grows to push "Play again" to the bottom of the screen. */}
+      <View style={styles.spacer} />
+
+      {/* ---------- BOTTOM: a big round "Play again" button ---------- */}
+      {/* Back to the lobby of THIS room, with the same friends, for another round. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Play again"
+        onPress={game.playAgain}
+        style={styles.again}>
+        {/* A plain circle with an outline (no shadow, so it reads as ONE button). */}
+        <View
+          style={[styles.againCircle, { backgroundColor: colors.primary, borderColor: colors.text }]}>
+          <Text style={[styles.againSymbol, { color: colors.onPrimary }]}>↻</Text>
+        </View>
+        <Text style={[styles.againText, { color: colors.text }]}>Play again</Text>
+      </Pressable>
     </Screen>
   );
+}
+
+// The cards for the pile, each with its sticker.
+function resultItems(result: Result): ResultItem[] {
+  return result.picks.map((pick, i) => ({
+    card: pick.card,
+    sticker: result.matched ? '♛ WINNER' : i === 0 ? 'TOP PICK' : `#${i + 1}`,
+    likes: pick.likes,
+  }));
+}
+
+// The words above the pile. For a winner, it depends on the time on this phone.
+function intro(result: Result) {
+  if (!result.matched) return 'Nobody agreed, but these got the most likes';
+  const hour = new Date().getHours(); // 0 = midnight, 13 = 1 PM, 23 = 11 PM
+  if (hour >= 5 && hour < 11) return "This morning you're eating at";
+  if (hour >= 11 && hour < 16) return "For lunch you're eating at";
+  if (hour >= 16 && hour < 22) return "Tonight you're eating at";
+  return "Late night, you're eating at";
 }
 
 const styles = StyleSheet.create({
@@ -145,11 +135,31 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
   },
-  againButton: {
+  leave: {
+    fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  spacer: {
+    flex: 1,
+  },
+  // The round button sits in the middle, with its words underneath.
+  again: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  againCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40, // half the size = a perfect circle
     borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  againSymbol: {
+    fontSize: 36,
+    fontWeight: '900',
   },
   againText: {
     fontSize: 15,
@@ -158,6 +168,10 @@ const styles = StyleSheet.create({
   intro: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  next: {
+    fontSize: 15,
+    fontWeight: '800',
   },
   nothingText: {
     fontSize: 16,
@@ -168,80 +182,8 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 40,
   },
-
-  photo: {
-    height: 190,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // The picture covers the whole photo box, on top of the mascot.
-  photoImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  sticker: {
-    position: 'absolute', // pinned to the top-left corner of the photo
-    top: 14,
-    left: 14,
-    borderWidth: 2,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    transform: [{ rotate: '-6deg' }],
-  },
-  stickerText: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  info: {
-    padding: 16,
-    gap: 6,
-  },
-  winnerName: {
+  title: {
     fontSize: 28,
-    fontWeight: '900',
-  },
-  votes: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  runnerUp: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 2,
-    borderRadius: 14,
-    padding: 12,
-  },
-  place: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeText: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  runnerUpInfo: {
-    flex: 1,
-  },
-  runnerUpName: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  runnerUpVotes: {
-    fontSize: 15,
     fontWeight: '900',
   },
 });

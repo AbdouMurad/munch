@@ -9,7 +9,7 @@ import httpx
 
 from munch.models import Card, Filters, LatLng
 from munch.photos.cache import TTLCache
-from munch.rooms.fixture_deck import DeckBuilder
+from munch.rooms.fixture_deck import NO_EXCLUDE, DeckBuilder
 
 MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 DEFAULT_WIDTH = 800  # what the app asks for (no ?w), so warmed entries match its requests
@@ -94,8 +94,14 @@ def with_photo_warmup(build_deck: DeckBuilder, photos: PhotoService) -> DeckBuil
     """Wrap a deck builder so dealing a deck starts warming its first cards' photos.
     Doesn't delay the deck: the warm-up runs in the background."""
 
-    async def builder(center: LatLng, radius_m: int, filters: Filters, seed: int) -> list[Card]:
-        deck = await build_deck(center, radius_m, filters, seed)
+    async def builder(
+        center: LatLng,
+        radius_m: int,
+        filters: Filters,
+        seed: int,
+        exclude: frozenset[str] = NO_EXCLUDE,
+    ) -> list[Card]:
+        deck = await build_deck(center, radius_m, filters, seed, exclude)
         photos.warm_in_background([c.id for c in deck[:WARM_AHEAD] if c.photo_url])
         return deck
 

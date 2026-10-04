@@ -1,20 +1,32 @@
 import { Redirect } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Avatar, ErrorLine, Eye, ProgressBar, Screen } from '@/components/ui';
+import { Avatar, ChunkyButton, ErrorLine, Eye, ProgressBar, Screen } from '@/components/ui';
 import { initials, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // DONE SCREEN: you finished swiping, now wait for your slower friends.
-// We don't leave this screen ourselves. When the game ends, the server tells
-// us (through the socket) and game.tsx moves everyone to the winner screen.
+// When the game ends, the server tells us (through the socket) and game.tsx
+// moves everyone to the winner screen. If the host searches farther, new cards
+// arrive and we go straight back to swiping them.
 export default function DoneScreen() {
   const { colors } = useAppTheme();
   const game = useGame();
   const room = game.room;
 
+  // How many cards I have swiped (the server keeps count for everyone).
+  const myProgress = room?.members.find((m) => m.id === game.myId)?.progress ?? 0;
+  // New cards arrived (the host searched farther)? Back to swiping, from my next card.
+  const moreCards = room?.status === 'swiping' && myProgress < game.deck.length;
+  useEffect(() => {
+    if (moreCards) game.resumeSwiping(myProgress);
+  }, [moreCards, myProgress, game]);
+
   // Not in a room (for example, the page was refreshed)? Go back home.
   if (!room) return <Redirect href="/" />;
+
+  const isHost = room.members.some((m) => m.id === game.myId && m.isHost);
 
   // Count the friends who are still swiping.
   const slowCount = room.members.filter((member) => member.progress < room.deckSize).length;
@@ -82,12 +94,15 @@ export default function DoneScreen() {
         })}
       </View>
 
+      {/* Out of cards? The host can add restaurants from farther away for everyone. */}
+      {isHost && <ChunkyButton label="Search 2 km farther" onPress={game.searchFarther} />}
+
       {/* This empty box grows to push the words to the bottom of the screen. */}
       <View style={styles.spacer} />
 
       <ErrorLine />
       <Text style={[styles.footnote, { color: colors.softText }]}>
-        Results show when everyone finishes
+        Results show when everyone finishes, or as soon as there&apos;s a match
       </Text>
     </Screen>
   );
