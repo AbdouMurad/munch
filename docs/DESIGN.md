@@ -210,6 +210,7 @@ class Member(BaseModel):
     is_host: bool
     progress: int                           # number of cards swiped
     user_id: str | None = None              # signed-in account (for "add friend"); None = guest
+    avatar_url: str | None = None           # their profile picture, if they have one
 
 class Card(BaseModel):
     id: str                                 # google place id
@@ -298,7 +299,7 @@ Add `make contracts` to run all three. Commit the generated files so the fronten
 
 ### 5.5 Accounts, friends and invites
 
-Optional accounts (tables: migrations `003`, `004_room_invites`). Code: `server/munch/accounts/` and
+Optional accounts (tables: migrations `003`, `004_room_invites`, `005_user_avatars`). Code: `server/munch/accounts/` and
 `routes/{auth,me,friends,invites}.py`. Everything here needs `DATABASE_URL`; without it these
 endpoints answer `503 UNAVAILABLE` and rooms keep working for guests.
 
@@ -318,6 +319,9 @@ Logout deletes the session.
 | `POST` | `/auth/email/verify` | `{ email, code }` | `AuthResponse` · `400 INVALID_CODE` |
 | `POST` | `/auth/logout` | – | `204` |
 | `GET` / `PATCH` | `/me` | `{ handle?, displayName?, shareLikes? }` | `MyProfile` · `409 HANDLE_TAKEN` |
+| `PUT` | `/me/avatar` | the image file itself (`Content-Type: image/jpeg`, png or webp, ≤ 1 MB) | `MyProfile` with the new `avatarUrl` |
+| `DELETE` | `/me/avatar` | – | `MyProfile` (`avatarUrl: null`) |
+| `GET` | `/users/{userId}/avatar` | – | image bytes, cached forever (the URL changes on every upload) · `404` |
 | `GET` / `PUT` | `/me/preferences` | `Preferences { priceLevels, excludeTypes, favoriteTypes, dietary, maxRadiusM }` | `Preferences` |
 | `GET` | `/me/invites` | – | `{ invites: RoomInvite[] }` (pending, unexpired) |
 | `GET` | `/friends` | – | `{ friends, incoming, outgoing }`, each `Friendship { user: PublicUser, status, since }` |

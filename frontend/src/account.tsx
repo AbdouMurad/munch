@@ -106,6 +106,8 @@ type Account = {
   googleSignIn: (idToken: string) => Promise<boolean>; // true = new account
   signOut: () => Promise<void>;
   setMe: (me: Me) => void;
+  uploadAvatar: (imageUri: string) => Promise<void>; // a small square JPEG on this device
+  removeAvatar: () => Promise<void>;
   refreshInvites: () => Promise<void>;
   dropInvite: (inviteId: string) => void;
 };
@@ -187,6 +189,30 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setMe(null);
     setInvites([]);
+  }
+
+  // ---------- Profile picture ----------
+
+  // Send the picture file itself (not JSON). The server answers with my updated profile.
+  async function uploadAvatar(imageUri: string) {
+    const picture = await (await fetch(imageUri)).blob();
+    let response: Response;
+    try {
+      response = await fetch(SERVER_URL + '/api/me/avatar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` },
+        body: picture,
+      });
+    } catch {
+      throw new Error('Could not reach the server. Is it running?');
+    }
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message ?? 'Upload failed');
+    setMe(data);
+  }
+
+  async function removeAvatar() {
+    setMe(await api<Me>('/api/me/avatar', 'DELETE'));
   }
 
   // ---------- Invites ----------
@@ -271,6 +297,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         googleSignIn,
         signOut,
         setMe,
+        uploadAvatar,
+        removeAvatar,
         refreshInvites,
         dropInvite,
       }}>
@@ -282,4 +310,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 // How to show someone in a list: "@sam_eats", or their name if they have no handle yet.
 export function displayHandle(user: { handle: string | null; displayName: string }) {
   return user.handle ? `@${user.handle}` : user.displayName;
+}
+
+// Where to load a profile picture from. Pictures people upload live on our server
+// ("/api/users/.../avatar"), Google pictures live on Google ("https://...").
+export function avatarUri(avatarUrl: string | null | undefined) {
+  if (!avatarUrl) return null;
+  return avatarUrl.startsWith('/') ? SERVER_URL + avatarUrl : avatarUrl;
 }

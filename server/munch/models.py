@@ -3,11 +3,14 @@
 Python stays snake_case; JSON on the wire is camelCase.
 """
 
+import re
 from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -59,6 +62,7 @@ class Member(CamelModel):
     is_host: bool
     progress: int  # number of cards swiped
     user_id: str | None = None  # signed-in account, for "add friend"; None for guests
+    avatar_url: str | None = None  # their profile picture, if signed in and they have one
 
 
 class Card(CamelModel):
@@ -162,7 +166,26 @@ class ErrorResponse(CamelModel):
 
 # --- Accounts (§5.5). Authenticated calls send `Authorization: Bearer <sessionToken>` ----
 
-Handle = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_]{3,20}$")]
+HANDLE_RULE = "Handles need 3-20 letters, numbers or _"
+
+
+def _clean_handle(value: object) -> object:
+    """Accept "@sam_eats" too: people often type the @ they see in the app."""
+    return value.strip().removeprefix("@").strip() if isinstance(value, str) else value
+
+
+def _check_handle(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,20}", value):
+        raise ValueError(HANDLE_RULE)
+    return value
+
+
+Handle = Annotated[
+    str,
+    BeforeValidator(_clean_handle),
+    AfterValidator(_check_handle),
+    Field(description=HANDLE_RULE, examples=["sam_eats"]),
+]
 Email = Annotated[
     str,
     StringConstraints(
