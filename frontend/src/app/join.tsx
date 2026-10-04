@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BackButton, ChunkyBox, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
+import { TaxiLoading } from '@/city';
 import { useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -163,7 +164,13 @@ export default function JoinScreen() {
       <ErrorLine />
 
       {/* Ask the server to let us in. If it works, we land in the lobby. */}
-      <ChunkyButton label="Join lobby" primary onPress={() => game.joinRoom(code, name)} />
+      {game.connecting ? (
+        // We asked the server and are waiting for it to answer.
+        // Show the taxi so people know something is happening.
+        <TaxiLoading label="Finding your friends..." />
+      ) : (
+        <ChunkyButton label="Join lobby" primary onPress={() => game.joinRoom(code, name)} />
+      )}
     </Screen>
   );
 }

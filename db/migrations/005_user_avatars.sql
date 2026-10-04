@@ -11,4 +11,3 @@ CREATE TABLE user_avatars (
   data          bytea NOT NULL CHECK (octet_length(data) <= 1000000),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
-`

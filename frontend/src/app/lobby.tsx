@@ -3,6 +3,7 @@ import { Redirect } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
+import { TaxiLoading } from '@/city';
 import { AddFriendButton, InviteFriends, UserAvatar } from '@/components/account-ui';
 import { BackButton, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
 import { joinLink, useGame } from '@/game';
@@ -147,9 +148,12 @@ export default function LobbyScreen() {
 
       <ErrorLine />
 
-      {iAmHost ? (
-        // The server answers by sending everyone the cards. When they arrive,
-        // game.tsx moves every player to the swipe screen.
+      {game.loadingCards ? (
+        // The game has started! game.tsx is downloading the first photos.
+        // As soon as they're ready, it moves every player to the swipe screen.
+        <TaxiLoading label="Getting the cards ready..." />
+      ) : iAmHost ? (
+        // The server answers by sending everyone the cards (see above).
         <ChunkyButton label="Start game" primary onPress={game.startGame} />
       ) : (
         <Text style={[styles.waiting, { color: colors.softText }]}>

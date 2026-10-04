@@ -39,3 +39,13 @@ services:
       # paste it in on their website, so it never ends up in GitHub.
       - key: DATABASE_URL
         sync: false
+
+      # SECRET too. The Google key that lets the server fetch restaurant photos.
+      # Without it the game still works, but cards show our mascot instead of photos.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+
+      # The Google sign-in ids we accept (comma-separated). Only needed for
+      # "Continue with Google". Leave it empty if you don't use Google sign-in.
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
