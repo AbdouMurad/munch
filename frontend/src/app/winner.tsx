@@ -38,11 +38,16 @@ export default function WinnerScreen() {
       </View>
 
       {!winner ? (
-        // ---------- Nobody liked anything ----------
+        // ---------- There is nothing to show ----------
         <View style={styles.nothing}>
           <Eye size={110} />
           <Text style={[styles.winnerName, { color: colors.text }]}>No winner this time</Text>
-          <Text style={{ color: colors.softText }}>Nobody said yes to anything. Play again?</Text>
+          <Text style={[styles.nothingText, { color: colors.softText }]}>
+            {room.deckSize === 0
+              ? // The server found no restaurants that fit the host's rules.
+                'No restaurants matched those rules. Try a bigger distance or fewer rules.'
+              : 'Nobody said yes to anything. Play again?'}
+          </Text>
         </View>
       ) : (
         <>
@@ -138,6 +143,10 @@ const styles = StyleSheet.create({
   intro: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  nothingText: {
+    fontSize: 16,
+    textAlign: 'center',
   },
   nothing: {
     alignItems: 'center',

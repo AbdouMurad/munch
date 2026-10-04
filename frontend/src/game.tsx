@@ -61,6 +61,15 @@ type Session = {
   memberToken: string; // a secret that proves it's really us
 };
 
+// The host's rules for which restaurants go in the deck.
+// The server uses these to pick restaurants from its database, sorts them
+// (best and closest first), and shuffles them a little so every game is different.
+export type Filters = {
+  priceLevels: number[]; // 1 = $, 2 = $$, ... (empty = any price)
+  minRating: number | null; // like 4 for "4 stars or better" (null = any rating)
+  openNow: boolean; // true = only places that are open right now
+};
+
 // How the game ended.
 //   matched = true  -> EVERYONE liked the first pick. We have a winner!
 //   matched = false -> nobody agreed, so picks are just the most-liked spots.
@@ -80,7 +89,7 @@ type Game = {
   myNope: number; // how many times I said nope
   result: Result | null; // null = the game isn't over yet
   error: string; // a problem to show the person ('' = no problem)
-  createRoom: (name: string, radiusM: number, priceLevels: number[]) => void;
+  createRoom: (name: string, radiusM: number, filters: Filters) => void;
   joinRoom: (code: string, name: string) => void;
   startGame: () => void;
   swipe: (card: Card, liked: boolean) => void;
@@ -146,11 +155,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function createRoom(name: string, radiusM: number, priceLevels: number[]) {
+  function createRoom(name: string, radiusM: number, filters: Filters) {
     enterRoom('/api/rooms', name, {
       center: DOWNTOWN_VANCOUVER,
       radiusM: radiusM,
-      filters: { priceLevels: priceLevels },
+      filters: filters,
     });
   }
 

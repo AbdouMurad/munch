@@ -18,6 +18,11 @@ const PRICES = [
   { label: '$$', value: 2 },
   { label: '$$$', value: 3 },
 ];
+const RATINGS = [
+  { label: 'Any', value: null }, // null means "I don't mind"
+  { label: '4+', value: 4 },
+  { label: '4.5+', value: 4.5 },
+];
 
 // A "chip" is a small round button you can turn on or off (like "3 km").
 // It's only used on this screen, so it lives here.
@@ -53,6 +58,8 @@ export default function CreateScreen() {
   const [name, setName] = useState('');
   const [distance, setDistance] = useState(3000);
   const [prices, setPrices] = useState([1, 2]); // you can pick MORE than one price
+  const [minRating, setMinRating] = useState<number | null>(null);
+  const [openNow, setOpenNow] = useState(false);
 
   // Tapping a price adds it if it's missing, or removes it if it's already there.
   function togglePrice(price: number) {
@@ -125,6 +132,30 @@ export default function CreateScreen() {
             ))}
           </View>
         </View>
+
+        <View style={styles.row}>
+          <Text style={[styles.settingName, { color: colors.text }]}>Stars</Text>
+          <View style={styles.chips}>
+            {RATINGS.map((option) => (
+              <Chip
+                key={option.label}
+                label={option.label}
+                selected={minRating === option.value}
+                onPress={() => setMinRating(option.value)}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={[styles.settingName, { color: colors.text }]}>Only open now</Text>
+          {/* One chip that flips between on and off each time you tap it. */}
+          <Chip
+            label={openNow ? 'Yes' : 'No'}
+            selected={openNow}
+            onPress={() => setOpenNow(!openNow)}
+          />
+        </View>
       </ChunkyBox>
 
       {/* This empty box grows to push the button to the bottom of the screen. */}
@@ -132,11 +163,19 @@ export default function CreateScreen() {
 
       <ErrorLine />
 
-      {/* Ask the server to make the room. If it works, we land in the lobby. */}
+      {/* Ask the server to make the room. If it works, we land in the lobby.
+          The server remembers these rules and uses them to build the deck
+          of restaurants when the game starts. */}
       <ChunkyButton
         label="Create lobby"
         primary
-        onPress={() => game.createRoom(name, distance, prices)}
+        onPress={() =>
+          game.createRoom(name, distance, {
+            priceLevels: prices,
+            minRating: minRating,
+            openNow: openNow,
+          })
+        }
       />
     </Screen>
   );
