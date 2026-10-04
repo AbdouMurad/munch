@@ -6,9 +6,14 @@ import { ChunkyBox, Eye } from '@/components/ui';
 import { Card, describe, photoAddress } from '@/game';
 import { useAppTheme } from '@/theme';
 
+// How tall the photo is, unless a screen asks for a shorter one (see photoHeight).
+export const PHOTO_HEIGHT = 220;
 // How tall one card is, so a box can hold a pile of them stacked on top of each other:
-// photo (220) + details (156) + outline and shadow (10).
-export const CARD_HEIGHT = 386;
+// photo + details (156) + outline and shadow (10).
+export function cardHeight(photoHeight = PHOTO_HEIGHT) {
+  return photoHeight + 156 + 10;
+}
+export const CARD_HEIGHT = cardHeight();
 
 // Every card in the pile is turned a tiny bit, so the pile looks messy,
 // like real cards somebody stacked in a hurry.
@@ -26,20 +31,29 @@ export function messyTilt(placeInDeck: number) {
 // nobody can see (the swipe screen's CARDS_WITH_PHOTOS). Leave it out to show it.
 // "children" is anything extra to draw on top of the card (the swipe glows, stickers).
 // Used by the swipe screen and the results stack, so both look exactly the same.
-export function RestaurantCard({ card, showPhoto = true, children }: {
+export function RestaurantCard({
+  card,
+  showPhoto = true,
+  shadow = true,
+  photoHeight = PHOTO_HEIGHT,
+  children,
+}: {
   card: Card;
   showPhoto?: boolean;
+  photoHeight?: number; // shorter on a small phone's results screen, so everything fits
+  shadow?: boolean; // false for cards under the top one, so a pile doesn't turn into a black blob
   children?: ReactNode;
 }) {
   const { colors } = useAppTheme();
   const photo = showPhoto ? photoAddress(card) : null;
   return (
-    <ChunkyBox background={colors.card} radius={20}>
+    <ChunkyBox background={colors.card} radius={20} shadow={shadow}>
       {/* Top half: the restaurant photo. The eye mascot sits underneath,
           so it shows while the photo loads, or if there is no photo
           (or if this card is too deep in the pile to bother with one). */}
-      <View style={[styles.photo, { backgroundColor: colors.soft }]}>
-        <Eye size={160} />
+      <View style={[styles.photo, { height: photoHeight, backgroundColor: colors.soft }]}>
+        {/* The mascot is a bit smaller than the photo box, so it never pokes out. */}
+        <Eye size={Math.min(160, photoHeight - 40)} />
         {photo && (
           <Image
             source={photo}
@@ -80,7 +94,7 @@ export function RestaurantCard({ card, showPhoto = true, children }: {
 
 const styles = StyleSheet.create({
   photo: {
-    height: 220,
+    overflow: 'hidden', // nothing inside (photo or mascot) spills onto the words below
     alignItems: 'center',
     justifyContent: 'center',
   },

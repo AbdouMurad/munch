@@ -236,6 +236,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8, // so a label never touches its chips on a narrow phone
   },
   settingName: {
     fontSize: 15,
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
   chip: {
     borderWidth: 2,
     borderRadius: 999, // a huge number = fully round ends
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
   },
   chipText: {

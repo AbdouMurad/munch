@@ -70,8 +70,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   signIn: {
+    flex: 1, // fill the page under the title...
+    justifyContent: 'center', // ...and sit in the middle of it, not stuck at the top
     gap: 16,
-    marginTop: 8,
+    paddingBottom: 60, // a little above the true middle looks more centered
   },
   why: {
     fontSize: 16,
