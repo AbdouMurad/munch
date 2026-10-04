@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -90,6 +91,13 @@ export default function HomeScreen() {
         <ChunkyButton label="Join with a code" onPress={() => router.push('/join')} />
         <Text style={[styles.footnote, { color: colors.softText }]}>
           Friends can join without an account
+        </Text>
+        {/* Which version of the code this is (the latest git commit), in tiny
+            faint letters. It's only here to help us when something goes wrong:
+            "what does it say at the bottom of your home screen?"
+            The value is stamped on when the app is built (see app.config.js). */}
+        <Text style={[styles.version, { color: colors.softText }]}>
+          version {Constants.expoConfig?.extra?.version ?? 'unknown'}
         </Text>
       </View>
     </SafeAreaView>
@@ -209,5 +217,10 @@ const styles = StyleSheet.create({
   footnote: {
     fontSize: 13,
     textAlign: 'center',
+  },
+  version: {
+    fontSize: 10,
+    textAlign: 'center',
+    opacity: 0.6, // faint, so it doesn't draw attention
   },
 });

@@ -46,7 +46,7 @@ function RoundButton({ symbol, label, background, symbolColor, onPress }: {
 // How far (in pixels) you must drag a card before it counts as an answer.
 // Drag less than this and let go, and the card bounces back to the middle.
 // (A phone screen is about 375 pixels wide, so this is a short, easy drag.)
-const SWIPE_DISTANCE = 70;
+const SWIPE_DISTANCE = 20;
 
 // A quick FLICK also counts, even if the card didn't travel far.
 // FLICK_SPEED is how fast the finger must be moving when it lets go
