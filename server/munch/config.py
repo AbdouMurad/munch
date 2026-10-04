@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     terminal_room_ttl: timedelta = timedelta(minutes=30)
     idle_room_ttl: timedelta = timedelta(hours=2)
 
+    # Accounts (§5.5)
+    # OAuth client ids whose Google ID tokens we accept, comma-separated (iOS, Android, web).
+    google_client_ids: str = ""
+    session_ttl: timedelta = timedelta(days=30)
+    login_code_ttl: timedelta = timedelta(minutes=10)
+    login_code_max_attempts: int = 5
+    login_codes_per_hour: int = 5  # per email
+    invite_ttl: timedelta = timedelta(minutes=30)
+
+    @property
+    def google_client_id_list(self) -> list[str]:
+        return [c.strip() for c in self.google_client_ids.split(",") if c.strip()]
+
     # Ranking (§8), tune these during the hackathon
     rating_prior_mean: float = 4.2
     rating_prior_weight: int = 50

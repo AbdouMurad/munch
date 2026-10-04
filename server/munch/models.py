@@ -6,7 +6,14 @@ Python stays snake_case; JSON on the wire is camelCase.
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    model_validator,
+)
 from pydantic.alias_generators import to_camel
 
 
@@ -51,6 +58,7 @@ class Member(CamelModel):
     display_name: str
     is_host: bool
     progress: int  # number of cards swiped
+    user_id: str | None = None  # signed-in account, for "add friend"; None for guests
 
 
 class Card(CamelModel):
@@ -133,7 +141,12 @@ ErrorCode = Literal[
     "BAD_STATE",
     "NOT_HOST",
     "UNAUTHORIZED",
+    "FORBIDDEN",
     "VALIDATION_ERROR",
+    "HANDLE_TAKEN",
+    "INVALID_CODE",
+    "RATE_LIMITED",
+    "UNAVAILABLE",  # needs the DB and it isn't configured
     "INTERNAL",
 ]
 
@@ -145,6 +158,117 @@ class ErrorBody(CamelModel):
 
 class ErrorResponse(CamelModel):
     error: ErrorBody
+
+
+# --- Accounts (§5.5). Authenticated calls send `Authorization: Bearer <sessionToken>` ----
+
+Handle = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z0-9_]{3,20}$")]
+Email = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, to_lower=True, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    ),
+]
+Dietary = Literal["vegetarian", "vegan", "halal", "gluten_free"]
+FriendshipStatus = Literal["none", "outgoing", "incoming", "friends"]
+
+
+class GoogleSignInRequest(CamelModel):
+    id_token: str  # from Google Sign-In on the device; verified by the server
+
+
+class EmailCodeRequest(CamelModel):
+    email: Email
+
+
+class EmailCodeVerifyRequest(CamelModel):
+    email: Email
+    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{6}$")]
+
+
+class MyProfile(CamelModel):
+    id: str
+    handle: str | None  # None until picked; needed to be found by friends
+    display_name: str
+    email: str | None
+    avatar_url: str | None
+    share_likes: bool
+
+
+class AuthResponse(CamelModel):
+    session_token: str  # store securely on the device; shown only once
+    user: MyProfile
+    is_new: bool  # first sign-in: show onboarding (pick a handle)
+
+
+class UpdateProfileRequest(CamelModel):
+    """Only the fields that are set are changed."""
+
+    handle: Handle | None = None
+    display_name: DisplayName | None = None
+    share_likes: bool | None = None
+
+
+class PublicUser(CamelModel):
+    """Another user as everyone else sees them. Never includes the email."""
+
+    id: str
+    handle: str | None
+    display_name: str
+    avatar_url: str | None
+
+
+class Preferences(CamelModel):
+    price_levels: list[PriceLevel] | None = None  # None = any
+    exclude_types: list[str] = []  # Google place types never to show
+    favorite_types: list[str] = []  # Google place types to boost
+    dietary: list[Dietary] = []
+    max_radius_m: RadiusM | None = None
+
+
+class AddFriendRequest(CamelModel):
+    """Exactly one of the two: a handle typed in, or a user id from a room member."""
+
+    handle: Handle | None = None
+    user_id: str | None = None
+
+    @model_validator(mode="after")
+    def exactly_one(self) -> "AddFriendRequest":
+        if (self.handle is None) == (self.user_id is None):
+            raise ValueError("send exactly one of handle or userId")
+        return self
+
+
+class Friendship(CamelModel):
+    user: PublicUser
+    status: FriendshipStatus
+    since: datetime | None  # when it was requested, or accepted once friends
+
+
+class FriendsResponse(CamelModel):
+    friends: list[Friendship]
+    incoming: list[Friendship]  # requests waiting for me
+    outgoing: list[Friendship]  # requests I sent
+
+
+class RoomInvite(CamelModel):
+    id: str
+    room_code: str
+    from_user: PublicUser
+    created_at: datetime
+    expires_at: datetime
+
+
+class InvitesResponse(CamelModel):
+    invites: list[RoomInvite]
+
+
+class SendInvitesRequest(CamelModel):
+    user_ids: Annotated[list[str], Field(min_length=1, max_length=20)]
+
+
+class SendInvitesResponse(CamelModel):
+    invited: list[str]  # user ids that got an invite (friends only; repeats are skipped)
 
 
 # --- WebSocket (§5.3): every message is {"type": ..., "payload": {...}} -----
@@ -266,3 +390,17 @@ ServerMessage = Annotated[
     Field(discriminator="type"),
 ]
 server_message_adapter: TypeAdapter[ServerMessage] = TypeAdapter(ServerMessage)
+
+
+# /ws/me?token=<sessionToken>: per-user socket for live invites. Server → client only,
+# plus ping/pong.
+
+
+class InviteReceivedMessage(CamelModel):
+    type: Literal["invite:received"] = "invite:received"
+    payload: RoomInvite
+
+
+UserServerMessage = Annotated[
+    InviteReceivedMessage | ErrorMessage | PongMessage, Field(discriminator="type")
+]

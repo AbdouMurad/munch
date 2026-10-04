@@ -10,6 +10,10 @@ The Expo / React Native app. Screens are in `src/app/` (Expo Router: each file i
    ```
    EXPO_PUBLIC_SERVER_URL=http://localhost:8000
    ```
+   Optional, for "Continue with Google" on the web:
+   ```
+   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<web client id>.apps.googleusercontent.com
+   ```
 3. Start the server (see [`server/README.md`](../server/README.md)).
 
 ## Run
@@ -34,6 +38,24 @@ Phone and computer must be on the same Wi-Fi.
 
 The server only accepts browser requests from `WEB_ORIGIN` in the repo-root `.env`. For
 `npx expo start --web` that's `http://localhost:8081`. Native apps aren't affected.
+
+## Accounts, friends and invites
+
+Signing in is optional; guests can still create and join games.
+
+- **Email sign-in** works everywhere. For now the 6-digit code is printed in the server's
+  terminal (`Login code for you@example.com: 123456`), not emailed.
+- **Google sign-in** only shows on the web for now. In Google Cloud Console create an OAuth
+  client of type *Web application*, add your web address (e.g. `http://localhost:8081`) as an
+  authorised JavaScript origin and redirect URI, put its id in `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+  here and in `GOOGLE_CLIENT_IDS` in the repo-root `.env`. On phones Google sign-in needs a
+  [development build](https://docs.expo.dev/guides/google-authentication/) and
+  `@react-native-google-signin/google-signin`; Expo Go can't do it.
+- **Invites** arrive instantly while the app is open, and wait on the home screen otherwise.
+  There are no phone notifications.
+
+Code: `src/account.tsx` (session, API calls, live invites), screens `signin`, `profile`,
+`friends`, and `src/components/account-ui.tsx` (invites inbox, lobby friend buttons).
 
 ## Before you push
 

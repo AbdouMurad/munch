@@ -1,6 +1,7 @@
 import { Redirect } from 'expo-router';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
+import { AddFriendButton, InviteFriends } from '@/components/account-ui';
 import { Avatar, BackButton, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
 import { initials, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
@@ -59,12 +60,17 @@ export default function LobbyScreen() {
               {member.displayName}
               {member.id === game.myId ? ' (you)' : ''}
             </Text>
+            {/* Signed-in players who aren't my friend yet get an "Add friend" button. */}
+            <AddFriendButton member={member} />
             <Text style={[styles.playerStatus, { color: colors.text }]}>
               {member.isHost ? 'Host' : 'Ready'}
             </Text>
           </View>
         ))}
       </View>
+
+      {/* If I'm signed in: my friends who aren't here yet, with an Invite button each. */}
+      <InviteFriends room={room} />
 
       {/* This empty box grows to push the button to the bottom of the screen. */}
       <View style={styles.spacer} />

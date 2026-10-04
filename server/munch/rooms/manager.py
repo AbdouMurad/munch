@@ -46,6 +46,7 @@ class LiveMember:
     token: str
     is_host: bool
     joined_at: datetime
+    user_id: str | None = None  # signed-in account; None for guests
     progress: int = 0
     left_at: datetime | None = None
     connections: int = 0
@@ -85,7 +86,13 @@ class LiveRoom:
             code=self.code,
             status=self.status,
             members=[
-                Member(id=m.id, display_name=m.display_name, is_host=m.is_host, progress=m.progress)
+                Member(
+                    id=m.id,
+                    display_name=m.display_name,
+                    is_host=m.is_host,
+                    progress=m.progress,
+                    user_id=m.user_id,
+                )
                 for m in self.active_members()
             ],
             center=self.center,
@@ -149,7 +156,13 @@ class RoomManager:
     # --- Lobby ----------------------------------------------------------------
 
     def create_room(
-        self, display_name: str, center: LatLng, radius_m: int, filters: Filters
+        self,
+        display_name: str,
+        center: LatLng,
+        radius_m: int,
+        filters: Filters,
+        *,
+        user_id: str | None = None,
     ) -> tuple[LiveRoom, LiveMember]:
         now = self._clock()
         room = LiveRoom(
@@ -164,13 +177,19 @@ class RoomManager:
             last_activity=now,
         )
         self._rooms[room.code] = room
-        return room, self._add_member(room, display_name, is_host=True)
+        return room, self._add_member(room, display_name, is_host=True, user_id=user_id)
 
-    def join_room(self, code: str, display_name: str) -> tuple[LiveRoom, LiveMember]:
+    def join_room(
+        self, code: str, display_name: str, *, user_id: str | None = None
+    ) -> tuple[LiveRoom, LiveMember]:
         room = self.get(code)
         if room.status != "lobby":
             raise RoomError("BAD_STATE", "This room has already started")
-        return room, self._add_member(room, display_name, is_host=False)
+        if user_id is not None:  # an account joining twice (e.g. a second invite) reuses its seat
+            for m in room.active_members():
+                if m.user_id == user_id:
+                    return room, m
+        return room, self._add_member(room, display_name, is_host=False, user_id=user_id)
 
     def begin_start(self, room: LiveRoom, member_id: str) -> None:
         """Validate a Start and lock the room while the caller builds the deck."""
@@ -294,7 +313,9 @@ class RoomManager:
             if code not in self._rooms:
                 return code
 
-    def _add_member(self, room: LiveRoom, display_name: str, *, is_host: bool) -> LiveMember:
+    def _add_member(
+        self, room: LiveRoom, display_name: str, *, is_host: bool, user_id: str | None = None
+    ) -> LiveMember:
         now = self._clock()
         member = LiveMember(
             id=str(uuid.uuid4()),
@@ -302,6 +323,7 @@ class RoomManager:
             token=secrets.token_urlsafe(32),
             is_host=is_host,
             joined_at=now,
+            user_id=user_id,
             disconnected_at=now,
         )
         room.members[member.id] = member
