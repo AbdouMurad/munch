@@ -1,7 +1,8 @@
 import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   Animated,
+  Easing,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 
 import { Avatar, ChunkyBox, ErrorLine, Eye, Screen } from '@/components/ui';
-import { describe, initials, useGame } from '@/game';
+import { Card, describe, initials, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // One of the round buttons under the card (nope, yes).
@@ -36,6 +37,23 @@ function RoundButton({ symbol, label, background, symbolColor, onPress }: {
 // Drag less than this and let go, and the card bounces back to the middle.
 const SWIPE_DISTANCE = 120;
 
+// How many cards sit in the pile at one time.
+// You swipe through these, and when they are ALL gone, a fresh pile of this
+// many cards falls down from the sky. The pile only ever gets SMALLER while you
+// swipe, so a card never pops up out of nowhere at the bottom.
+const HAND_SIZE = 10;
+
+// How the new pile falls in:
+const FALL_TIME = 250; // how long ONE card takes to fall, in milliseconds
+const FALL_GAP = 50; // how long we wait before dropping the NEXT card
+
+// Makes a list of "fall" numbers, one for each card in a new pile.
+// Each one starts at 0 (= still up in the sky, out of sight)
+// and later slides to 1 (= landed on the pile).
+function makeFalls() {
+  return Array.from({ length: HAND_SIZE }, () => new Animated.Value(0));
+}
+
 // Makes a "gradient": a color that fades from see-through to solid.
 //   direction = which way it gets stronger ("right" or "left")
 // Phones and web browsers spell this rule differently, so we write it both
@@ -47,6 +65,54 @@ function fadeTo(direction: 'left' | 'right', color: string) {
     experimental_backgroundImage: gradient, // phones
     backgroundImage: gradient, // web browsers
   } as ViewStyle;
+}
+
+// Every card in the pile is turned a tiny bit, so the pile looks messy,
+// like real cards somebody stacked in a hurry.
+// The tilt LOOKS random, but it is worked out from the card's place in the deck,
+// so the same card always gets the same tilt and never wobbles when the screen redraws.
+function messyTilt(placeInDeck: number) {
+  const degrees = ((placeInDeck * 37) % 7) - 3; // always a number from -3 to 3
+  return { rotate: `${degrees}deg` };
+}
+
+// One printed restaurant card: a photo on top, the name and details underneath.
+// "children" is anything extra to draw on top of the card (we use it for the glow).
+function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }) {
+  const { colors } = useAppTheme();
+  return (
+    <ChunkyBox background={colors.card} radius={20}>
+      {/* Top half: the restaurant photo (our eye mascot for now).
+          TODO: show the real photo once the server sends photoUrl */}
+      <View style={[styles.photo, { backgroundColor: colors.soft }]}>
+        <Eye size={160} />
+      </View>
+
+      {/* Bottom half: the name and details. Every card is the SAME height, so
+          they stack neatly. Long words get cut off with "..." (numberOfLines). */}
+      <View style={styles.info}>
+        <Text numberOfLines={2} style={[styles.restaurantName, { color: colors.text }]}>
+          {card.name}
+        </Text>
+        {/* Something like "Ramen · $$ · 1.2 km" */}
+        <Text numberOfLines={1} style={{ color: colors.softText }}>
+          {describe(card)}
+        </Text>
+        {card.rating && (
+          <Text style={{ color: colors.text }}>
+            ★ {card.rating} ({card.ratingCount} reviews)
+          </Text>
+        )}
+        {card.address && (
+          <Text numberOfLines={1} style={{ color: colors.softText }}>
+            {card.address}
+          </Text>
+        )}
+      </View>
+
+      {children}
+    </ChunkyBox>
+  );
 }
 
 // SWIPE SCREEN: look at one restaurant at a time and say yes or no.
@@ -65,8 +131,42 @@ export default function SwipeScreen() {
   // How far the card has been dragged sideways. 0 = resting in the middle,
   // a plus number = dragged right, a minus number = dragged left.
   // It's an "Animated" number, so things that follow it move smoothly.
-  // (useState with a function makes it ONCE and keeps the same one forever.)
-  const [dragX] = useState(() => new Animated.Value(0));
+  // Each new top card gets its OWN fresh dragX (see flyAway below).
+  const [dragX, setDragX] = useState(() => new Animated.Value(0));
+
+  // A "hand" is the little pile of (up to) 10 cards you are working through.
+  // handStart = the place in the deck where this hand begins.
+  // Example: handStart = 20 means this hand is cards 20, 21, ... 29.
+  const [handStart, setHandStart] = useState(game.startAt);
+  // Where this hand ends. Usually handStart + 10, but near the end of the
+  // deck there might be fewer than 10 cards left.
+  const handEnd = Math.min(handStart + HAND_SIZE, game.deck.length);
+
+  // One "fall" number per card in the hand (see makeFalls above).
+  // Every new hand gets brand new ones, so its cards start up in the sky.
+  const [falls, setFalls] = useState(makeFalls);
+  // True while the cards are still falling. We ignore swipes until they land.
+  const [isDealing, setIsDealing] = useState(true);
+
+  // Every time we get a new set of "falls" (= a new hand), drop the cards in.
+  // (This also runs once when the screen first opens, so the very first
+  // hand falls in too.)
+  useEffect(() => {
+    // The BOTTOM card falls first and the TOP card falls last, like dealing
+    // cards onto a table. falls[0] is the top card, so we go backwards.
+    const bottomFirst = [...falls].reverse();
+    Animated.stagger(
+      FALL_GAP, // start each card a little after the one before it
+      bottomFirst.map((fall) =>
+        Animated.timing(fall, {
+          toValue: 1, // 1 = landed
+          duration: FALL_TIME,
+          easing: Easing.out(Easing.quad), // fast at first, gentle landing
+          useNativeDriver: false, // same as the drag, so they can share a card
+        }),
+      ),
+    ).start(() => setIsDealing(false)); // all landed: you can swipe now!
+  }, [falls]);
 
   // Not in a room (for example, the page was refreshed)? Go back home.
   if (!room) return <Redirect href="/" />;
@@ -78,23 +178,40 @@ export default function SwipeScreen() {
   // (If EVERYONE liked this one, the server says so and game.tsx jumps to the winner.)
   function answer(liked: boolean) {
     game.swipe(card, liked);
-    if (cardNumber + 1 < game.deck.length) {
-      setCardNumber(cardNumber + 1);
-    } else {
+    const nextCard = cardNumber + 1;
+
+    if (nextCard >= game.deck.length) {
+      // That was the very last card in the whole deck.
       router.replace('/done');
+      return;
+    }
+
+    setCardNumber(nextCard);
+
+    // Was that the last card in this hand? Then deal a new hand that starts
+    // at the next card. New "falls" make the new cards drop in from the sky.
+    if (nextCard >= handEnd) {
+      setHandStart(nextCard);
+      setFalls(makeFalls());
+      setIsDealing(true); // no swiping until the new cards have landed
     }
   }
 
-  // Slide the card off the side of the screen, THEN count the answer and
-  // put the (new) card back in the middle. Buttons and swipes both use this.
+  // Slide the card off the side of the screen, THEN count the answer.
+  // Buttons and swipes both use this.
   function flyAway(liked: boolean) {
+    // Cards still falling? Wait for them to land first.
+    if (isDealing) return;
     Animated.timing(dragX, {
       toValue: liked ? 500 : -500, // far enough to be off the screen
       duration: 200, // takes 200 milliseconds (a fifth of a second)
       useNativeDriver: false,
     }).start(() => {
       answer(liked);
-      dragX.setValue(0);
+      // The next card becomes the top card. Give it a brand new dragX that
+      // starts at 0 (the middle). We do NOT slide the old card back: it is
+      // gone for good, so nothing jumps or flickers.
+      setDragX(new Animated.Value(0));
     });
   }
 
@@ -141,9 +258,14 @@ export default function SwipeScreen() {
 
   // How many cards are left, counting the one we are looking at.
   const cardsLeft = game.deck.length - cardNumber;
-  // The pile behind the top card shows up to 3 cards. As the deck runs out,
-  // the pile gets smaller: that's how you can see your progress.
-  const pile = [3, 2, 1].filter((n) => n < cardsLeft);
+  // The cards we actually draw: every card LEFT in this hand.
+  // Example: hand is cards 20-29 and we're on card 23 -> draw 23 to 29.
+  // We never draw cards from the NEXT hand, so nothing appears at the bottom.
+  // The list goes bottom card first, because things drawn LATER sit on TOP.
+  const pile: number[] = [];
+  for (let place = handEnd - 1; place >= cardNumber; place--) {
+    pile.push(place);
+  }
 
   // Count the friends who have finished all their cards.
   const finishedCount = room.members.filter((m) => m.progress >= room.deckSize).length;
@@ -184,76 +306,81 @@ export default function SwipeScreen() {
         </View>
       </View>
 
-      {/* ---------- The restaurant card ---------- */}
+      {/* ---------- The pile of restaurant cards ---------- */}
       <View style={styles.cardArea}>
-        {/* This box is exactly as big as the card, so the pile of cards
-            behind it can copy its size. */}
         <View style={styles.cardStack}>
-          {/* The pile: blank cards peeking out underneath, each one a bit
-              lower and a bit narrower than the one above it. */}
-          {pile.map((n) => (
-            <View
-              key={n}
-              style={[
-                styles.pileCard,
-                {
-                  backgroundColor: colors.soft,
-                  borderColor: colors.text,
-                  top: n * 9,
-                  bottom: -n * 9,
-                  left: n * 9,
-                  right: n * 9 + 6,
-                },
-              ]}
-            />
-          ))}
+          {pile.map((place) => {
+            const isTop = place === cardNumber;
 
-          {/* The real card. It follows your finger (translateX) and tilts as it goes.
-              "panHandlers" is what connects it to the finger-watcher above. */}
-          <Animated.View
-            {...panResponder.panHandlers}
-            style={{ transform: [{ translateX: dragX }, { rotate: tilt }] }}>
-            <ChunkyBox background={colors.card} radius={20}>
-              {/* Top half: the restaurant photo (our eye mascot for now).
-                  TODO: show the real photo once the server sends photoUrl */}
-              <View style={[styles.photo, { backgroundColor: colors.soft }]}>
-                <Eye size={170} />
-              </View>
+            // This card's own "fall" number. (place - handStart) is its spot
+            // in the hand: 0 for the hand's first card, 9 for its last.
+            const fall = falls[place - handStart];
+            // fall 0 -> 700 pixels ABOVE its spot. fall 1 -> sitting on the pile.
+            const fallY = fall.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-700, 0],
+            });
+            // Hidden while it waits in the sky, then appears as it starts falling.
+            const fallOpacity = fall.interpolate({
+              inputRange: [0, 0.1, 1],
+              outputRange: [0, 1, 1],
+            });
 
-              {/* Bottom half: the name and details. */}
-              <View style={styles.info}>
-                <Text style={[styles.restaurantName, { color: colors.text }]}>{card.name}</Text>
-                {/* Something like "Ramen · $$ · 1.2 km" */}
-                <Text style={{ color: colors.softText }}>{describe(card)}</Text>
-                {card.rating && (
-                  <Text style={{ color: colors.text }}>
-                    ★ {card.rating} ({card.ratingCount} reviews)
-                  </Text>
-                )}
-                {card.address && <Text style={{ color: colors.softText }}>{card.address}</Text>}
-              </View>
-
-              {/* The GREEN glow. It covers the whole card and fades from nothing
-                  (left side) to green (right side). It is invisible until you
-                  drag right, because its opacity follows yesGlow. */}
+            return (
               <Animated.View
-                pointerEvents="none" // touches go straight through it to the card
-                style={[styles.glow, fadeTo('right', colors.yes), { opacity: yesGlow }]}>
-                <View style={[styles.sticker, styles.yesSticker, { borderColor: colors.card }]}>
-                  <Text style={[styles.stickerText, { color: colors.card }]}>OH YES</Text>
-                </View>
-              </Animated.View>
+                // The "key" is the card's name tag. It lets a card keep being the
+                // same card when it moves up the pile, instead of being redrawn.
+                key={game.deck[place].id}
+                // Only the top card listens to your finger.
+                // "panHandlers" is what connects it to the finger-watcher above.
+                {...(isTop ? panResponder.panHandlers : {})}
+                style={[
+                  styles.stackedCard,
+                  {
+                    opacity: fallOpacity,
+                    transform: isTop
+                      ? // The top card falls in, then follows your finger and tilts...
+                        [
+                          { translateY: fallY },
+                          { translateX: dragX },
+                          { rotate: tilt },
+                          messyTilt(place),
+                        ]
+                      : // ...the cards underneath just fall in and sit there, a bit crooked.
+                        [{ translateY: fallY }, messyTilt(place)],
+                  },
+                ]}>
+                <RestaurantCard card={game.deck[place]}>
+                  {/* Only the top card needs the glows. */}
+                  {isTop && (
+                    <>
+                      {/* The GREEN glow. It covers the whole card and fades from
+                          nothing (left side) to green (right side). It is invisible
+                          until you drag right, because its opacity follows yesGlow. */}
+                      <Animated.View
+                        pointerEvents="none" // touches go straight through it to the card
+                        style={[styles.glow, fadeTo('right', colors.yes), { opacity: yesGlow }]}>
+                        <View
+                          style={[styles.sticker, styles.yesSticker, { borderColor: colors.card }]}>
+                          <Text style={[styles.stickerText, { color: colors.card }]}>OH YES</Text>
+                        </View>
+                      </Animated.View>
 
-              {/* The RED glow: the mirror image, for dragging left. */}
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.glow, fadeTo('left', colors.nope), { opacity: nopeGlow }]}>
-                <View style={[styles.sticker, styles.nopeSticker, { borderColor: colors.card }]}>
-                  <Text style={[styles.stickerText, { color: colors.card }]}>NOPE</Text>
-                </View>
+                      {/* The RED glow: the mirror image, for dragging left. */}
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[styles.glow, fadeTo('left', colors.nope), { opacity: nopeGlow }]}>
+                        <View
+                          style={[styles.sticker, styles.nopeSticker, { borderColor: colors.card }]}>
+                          <Text style={[styles.stickerText, { color: colors.card }]}>NOPE</Text>
+                        </View>
+                      </Animated.View>
+                    </>
+                  )}
+                </RestaurantCard>
               </Animated.View>
-            </ChunkyBox>
-          </Animated.View>
+            );
+          })}
         </View>
       </View>
 
@@ -311,14 +438,17 @@ const styles = StyleSheet.create({
     flex: 1, // the card gets all the leftover space
     justifyContent: 'center',
   },
+  // The pile's box. It has a fixed height because the cards inside are
+  // "absolute" (stacked on top of each other), so they can't push it open.
   cardStack: {
-    marginHorizontal: 10,
-    marginBottom: 30, // room for the pile to peek out underneath
+    height: 386, // photo (220) + details (156) + outline and shadow (10)
+    marginHorizontal: 12,
   },
-  pileCard: {
-    position: 'absolute', // sits behind the real card
-    borderWidth: 2,
-    borderRadius: 20,
+  stackedCard: {
+    position: 'absolute', // every card sits in the same spot, one on top of another
+    top: 0,
+    left: 0,
+    right: 0,
   },
   glow: {
     position: 'absolute', // stretched over the whole card
@@ -328,7 +458,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   photo: {
-    height: 240,
+    height: 220,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -354,11 +484,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   info: {
+    height: 156,
     padding: 16,
-    gap: 6,
+    gap: 4,
   },
   restaurantName: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '900',
   },
 
