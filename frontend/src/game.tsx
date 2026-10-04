@@ -7,6 +7,7 @@
 //
 // Every screen can reach into this file with:  const game = useGame();
 
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useRef, useState } from 'react';
 
@@ -40,8 +41,27 @@ export type Card = {
   priceLevel: number | null; // 1 = $, 2 = $$, ...
   primaryType: string | null; // like "ramen_restaurant"
   address: string | null;
+  photoUrl: string | null; // like "/api/photos/abc" on OUR server, or null if no photo
   mapsUri: string | null; // a link that opens the maps app
 };
+
+// The full web address of a card's photo, or null if it has none.
+// It points at our server, which sends the phone on to the real picture on Google
+// (so the Google key never has to be inside the app).
+export function photoAddress(card: Card) {
+  return card.photoUrl ? SERVER_URL + card.photoUrl : null;
+}
+
+// How many cards ahead we download photos for, so a photo is already there
+// when its card shows up.
+export const PRELOAD_AHEAD = 5;
+
+// Start downloading these cards' photos in the background (no waiting).
+// When the card shows up later, its photo comes straight from the phone's memory.
+export function preloadPhotos(cards: Card[]) {
+  const addresses = cards.map(photoAddress).filter((address) => address !== null);
+  if (addresses.length > 0) Image.prefetch(addresses);
+}
 
 // Everything about the room.
 export type Room = {
@@ -212,6 +232,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // The host pressed Start. Here are the cards! Everyone goes to the swipe screen.
       if (message.type === 'room:started') {
+        // Get the first photos downloading right away, before the swipe screen even opens.
+        preloadPhotos(payload.deck.slice(payload.resumeAt, payload.resumeAt + PRELOAD_AHEAD));
         setDeck(payload.deck);
         setStartAt(payload.resumeAt);
         setMyYes(0);

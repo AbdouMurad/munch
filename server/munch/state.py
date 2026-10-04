@@ -9,6 +9,7 @@ from starlette.requests import HTTPConnection
 
 from munch.accounts.google import GoogleVerifier
 from munch.config import Settings
+from munch.photos.service import PhotoService
 from munch.realtime.hub import Hub
 from munch.rooms.fixture_deck import DeckBuilder
 from munch.rooms.manager import RoomManager
@@ -23,6 +24,7 @@ class AppState:
     db_pool: "asyncpg.Pool[asyncpg.Record] | None"
     user_hub: Hub  # /ws/me sockets, keyed by user id
     google: GoogleVerifier
+    photos: PhotoService | None = None  # needs both the DB and the Google key
 
 
 def get_state(conn: HTTPConnection) -> AppState:
