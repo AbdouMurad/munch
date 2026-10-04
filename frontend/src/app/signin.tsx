@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { useAccount } from '@/account';
+import { useTabs } from '@/tabs';
 import { Field, Message } from '@/components/account-ui';
 import { BackButton, ChunkyButton, Screen } from '@/components/ui';
 import { useAppTheme } from '@/theme';
@@ -23,6 +24,7 @@ const GOOGLE = { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2
 export default function SignInScreen() {
   const { colors } = useAppTheme();
   const account = useAccount();
+  const tabs = useTabs();
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -44,10 +46,10 @@ export default function SignInScreen() {
     GOOGLE,
   );
 
-  // Signed in! New people pick a handle first, everyone else goes back where they were.
+  // Signed in! New people land on their profile to pick a handle.
   function done(isNew: boolean) {
-    if (isNew) router.replace('/profile');
-    else router.back();
+    if (isNew) tabs.setTab('profile');
+    router.back();
   }
 
   useEffect(() => {
