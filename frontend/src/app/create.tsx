@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -7,6 +6,7 @@ import { TaxiLoading } from '@/city';
 import { useAccount } from '@/account';
 import { PlayingAs } from '@/components/account-ui';
 import { useGame } from '@/game';
+import { goBackOrHome } from '@/navigation';
 import { useAppTheme } from '@/theme';
 
 // The choices the host can pick from.
@@ -79,7 +79,7 @@ export default function CreateScreen() {
     <Screen>
       {/* ---------- TOP: back button and screen name ---------- */}
       <View style={styles.topBar}>
-        <BackButton onPress={() => router.back()} />
+        <BackButton onPress={goBackOrHome} />
         <Text style={[styles.topTitle, { color: colors.text }]}>Start a game</Text>
       </View>
 

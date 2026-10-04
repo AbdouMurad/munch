@@ -170,8 +170,8 @@ Burnaby, 3,618 operational. 84% have a price level, 95% a rating, 90% opening ho
   `restaurant_swipe_stats_daily` continuous aggregate behind `/stats` and the crowd-popularity
   term, and compression on chunks older than 7 days.
 - **`003_accounts.sql`:** optional accounts (guests still play anonymously). `users`,
-  `auth_identities` (Google `sub` or email), hashed `sessions` and `email_login_codes` (no
-  passwords), `user_preferences` (hard filters merged into a room's `Filters` at Start, plus soft
+  `auth_identities` (Google `sub` or email; `008` adds the email password hash and drops
+  003's old `email_login_codes`), hashed `sessions`, `user_preferences` (hard filters merged into a room's `Filters` at Start, plus soft
   `favorite_types`), `friendships` (one row per ordered pair, pending/accepted) and `blocks`,
   `room_members.user_id`, and **`swipes`**: one row per signed-in swipe (`swipe_id` primary key,
   `user_id, restaurant_id, liked, swiped_at`), never overwritten, used to learn what each user
@@ -309,20 +309,23 @@ Optional accounts (tables: migrations `003`, `004_room_invites`, `005_user_avata
 `routes/{auth,me,friends,invites}.py`. Everything here needs `DATABASE_URL`; without it these
 endpoints answer `503 UNAVAILABLE` and rooms keep working for guests.
 
-**Sign-in.** No passwords. Either Google (the app gets an ID token from Google Sign-In; the
-server checks its signature, issuer, expiry, that the audience is one of `GOOGLE_CLIENT_IDS`,
-and that the email is verified) or a 6-digit code for any email (10 min, 5 attempts, 5 codes
-per hour; **for now the code is only written to the server log**). Both return
-`AuthResponse { sessionToken, user: MyProfile, isNew }`. A Google login and an email login with
-the same verified address are the same account. The client stores `sessionToken` (SecureStore
+**Sign-in.** Either Google (the app gets an ID token from Google Sign-In; the server checks its
+signature, issuer, expiry, that the audience is one of `GOOGLE_CLIENT_IDS`, and that the email
+is verified) or **email + password**. Registering takes email, password (8+ characters), name
+and handle in one call. Passwords are hashed with scrypt (`accounts/passwords.py`); 10 wrong
+passwords for one email lock it for 15 minutes; a wrong password and an unknown email get the
+same `401` so nobody can probe who has an account. All return
+`AuthResponse { sessionToken, user: MyProfile, isNew }`. Google joins an existing account with
+the same verified address, and since a password account's address was never proven, that
+account's password and sessions are removed at that moment (the real owner keeps Google). The client stores `sessionToken` (SecureStore
 on phones) and sends `Authorization: Bearer <sessionToken>`. Only its SHA-256 is stored.
 Logout deletes the session.
 
 | Method | Path | Body | Response |
 |---|---|---|---|
 | `POST` | `/auth/google` | `{ idToken }` | `AuthResponse` · `401` bad token |
-| `POST` | `/auth/email/start` | `{ email }` | `204` · `429 RATE_LIMITED` |
-| `POST` | `/auth/email/verify` | `{ email, code }` | `AuthResponse` · `400 INVALID_CODE` |
+| `POST` | `/auth/register` | `{ email, password, displayName, handle }` | `201 AuthResponse` · `409 EMAIL_TAKEN` / `HANDLE_TAKEN` |
+| `POST` | `/auth/login` | `{ email, password }` | `AuthResponse` · `401` wrong email or password · `429 RATE_LIMITED` |
 | `POST` | `/auth/logout` | – | `204` |
 | `GET` / `PATCH` | `/me` | `{ handle?, displayName?, shareLikes? }` | `MyProfile` · `409 HANDLE_TAKEN` |
 | `PUT` | `/me/avatar` | the image file itself (`Content-Type: image/jpeg`, png or webp, ≤ 1 MB) | `MyProfile` with the new `avatarUrl` |

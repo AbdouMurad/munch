@@ -67,7 +67,7 @@ MUNCH_TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest
 | `munch/main.py` | App setup, error handling, `/api/health` |
 | `munch/config.py` | Settings from `.env` (timeouts, ranking weights) |
 | `munch/routes/` | REST endpoints (`/api/rooms`, `/auth`, `/me`, `/friends`, invites) |
-| `munch/accounts/` | Sign-in (Google, email codes), sessions, friends, invites, all account SQL |
+| `munch/accounts/` | Sign-in (Google, email + password), sessions, friends, invites, all account SQL |
 | `munch/realtime/` | `/ws/{code}` room socket, `/ws/me` per-user socket, broadcasting, sweeper |
 | `munch/rooms/` | In-memory rooms and match logic, fixture deck |
 | `munch/ranking/` | Candidate query and scoring |

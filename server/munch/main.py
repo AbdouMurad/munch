@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from munch.accounts.errors import AccountError
 from munch.accounts.google import GoogleVerifier
+from munch.accounts.passwords import LoginLimiter
 from munch.config import Settings, get_settings
 from munch.models import ErrorBody, ErrorCode, ErrorResponse, HealthResponse
 from munch.photos.service import PhotoService, with_photo_warmup
@@ -43,7 +44,7 @@ ROOM_ERROR_STATUS: dict[ErrorCode, int] = {
     "FORBIDDEN": 403,
     "HANDLE_TAKEN": 409,
     "HANDLE_LOCKED": 409,
-    "INVALID_CODE": 400,
+    "EMAIL_TAKEN": 409,
     "RATE_LIMITED": 429,
     "UNAVAILABLE": 503,
 }
@@ -84,6 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db_pool=db_pool,
         user_hub=Hub(),
         google=GoogleVerifier(settings.google_client_id_list),
+        login_limiter=LoginLimiter(settings.login_max_failures, settings.login_lockout),
         photos=photos,
     )
     app.state.munch = state

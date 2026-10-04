@@ -150,7 +150,7 @@ ErrorCode = Literal[
     "VALIDATION_ERROR",
     "HANDLE_TAKEN",
     "HANDLE_LOCKED",  # a handle is picked once and can't be changed
-    "INVALID_CODE",
+    "EMAIL_TAKEN",  # registering an email that already has an account
     "RATE_LIMITED",
     "UNAVAILABLE",  # needs the DB and it isn't configured
     "INTERNAL",
@@ -202,13 +202,33 @@ class GoogleSignInRequest(CamelModel):
     id_token: str  # from Google Sign-In on the device; verified by the server
 
 
-class EmailCodeRequest(CamelModel):
-    email: Email
+PASSWORD_RULE = "Passwords need at least 8 characters"
 
 
-class EmailCodeVerifyRequest(CamelModel):
+def _check_password(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError(PASSWORD_RULE)
+    return value
+
+
+# Never trimmed or changed: spaces are allowed and count.
+Password = Annotated[
+    str, Field(max_length=128, description=PASSWORD_RULE), AfterValidator(_check_password)
+]
+
+
+class RegisterRequest(CamelModel):
+    """Create an account with an email and password, plus how friends will see you."""
+
     email: Email
-    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^\d{6}$")]
+    password: Password
+    display_name: DisplayName
+    handle: Handle
+
+
+class LoginRequest(CamelModel):
+    email: Email
+    password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
 class MyProfile(CamelModel):

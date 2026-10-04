@@ -12,12 +12,7 @@ from typing import Any
 import asyncpg
 
 from munch.accounts.errors import AccountError
-from munch.accounts.tokens import (
-    hash_login_code,
-    login_code_matches,
-    new_login_code,
-    new_session_token,
-)
+from munch.accounts.tokens import new_session_token
 from munch.models import (
     Friendship,
     FriendshipStatus,
@@ -75,11 +70,11 @@ async def sign_in_with_identity(
 ) -> tuple[MyProfile, bool]:
     """Find or create the user behind a login. Returns (profile, created_now).
 
-    A new login method joins an existing account only through a verified email, so signing in
-    with Google and with an emailed code (same address) gives one account.
+    Google joins an existing account through its verified email, so an email + password
+    account and a Google sign-in with the same address end up as one account.
 
     `avatar_url` is the login's own picture (Google's). It becomes the default picture of any
-    account that has none, so an account made with an email code picks up the Google picture
+    account that has none, so an email + password account picks up the Google picture
     the first time it signs in with Google. A picture the user uploaded is never replaced.
     """
     async with pool.acquire() as conn, conn.transaction():
@@ -103,6 +98,16 @@ async def sign_in_with_identity(
             row = await conn.fetchrow(
                 f"SELECT {USER_COLS} FROM users u WHERE lower(u.email) = lower($1)", email
             )
+            if row is not None and provider == "google":
+                # Google just proved this address belongs to the person signing in. Anyone
+                # can register a password account with someone else's address, so that
+                # unproven way in is closed: its password and sessions are removed, and the
+                # real owner carries on with Google.
+                await conn.execute(
+                    "DELETE FROM auth_identities WHERE user_id = $1 AND provider = 'email'",
+                    row["id"],
+                )
+                await conn.execute("DELETE FROM sessions WHERE user_id = $1", row["id"])
         if row is None:
             row = await conn.fetchrow(
                 f"""INSERT INTO users AS u (display_name, email, avatar_url)
@@ -268,47 +273,71 @@ async def delete_session(pool: Pool, token_hash: bytes) -> None:
     await pool.execute("DELETE FROM sessions WHERE token_hash = $1", token_hash)
 
 
-# --- Email login codes ----------------------------------------------------
+# --- Email and password -------------------------------------------------
 
 
-async def create_login_code(pool: Pool, email: str, ttl: timedelta, per_hour: int) -> str:
-    recent = await pool.fetchval(
-        """SELECT count(*) FROM email_login_codes
-           WHERE lower(email) = lower($1) AND created_at > now() - interval '1 hour'""",
-        email,
-    )
-    if recent >= per_hour:
-        raise AccountError("RATE_LIMITED", "Too many codes requested; try again later")
-    code = new_login_code()
-    await pool.execute(
-        "INSERT INTO email_login_codes (email, code_hash, expires_at) VALUES ($1, $2, now() + $3)",
-        email,
-        hash_login_code(email, code),
-        ttl,
-    )
-    return code
-
-
-async def verify_login_code(pool: Pool, email: str, code: str, max_attempts: int) -> bool:
-    """Check the newest live code for this email. Each wrong guess uses up an attempt."""
+async def register_with_password(
+    pool: Pool, *, email: str, password_hash: str, display_name: str, handle: str
+) -> MyProfile:
+    """Create an email + password account, complete with name and handle."""
     async with pool.acquire() as conn, conn.transaction():
-        row = await conn.fetchrow(
-            """SELECT id, code_hash, attempts FROM email_login_codes
-               WHERE lower(email) = lower($1) AND consumed_at IS NULL AND expires_at > now()
-               ORDER BY created_at DESC LIMIT 1 FOR UPDATE""",
-            email,
+        taken = await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower($1))", email
         )
-        if row is None or row["attempts"] >= max_attempts:
-            return False
-        if login_code_matches(email, code, row["code_hash"]):
-            await conn.execute(
-                "UPDATE email_login_codes SET consumed_at = now() WHERE id = $1", row["id"]
+        if taken:
+            raise AccountError(
+                "EMAIL_TAKEN", "There's already an account with this email. Sign in instead."
             )
-            return True
+        # Checked here too (not only by the unique index), so "Sam" and "sam" count as the
+        # same handle even where the column isn't case-insensitive.
+        if await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE lower(handle) = lower($1))", handle
+        ):
+            raise AccountError("HANDLE_TAKEN", f"@{handle} is taken")
+        try:
+            row = await conn.fetchrow(
+                f"""INSERT INTO users AS u (display_name, email, handle)
+                    VALUES ($1, $2, $3) RETURNING {USER_COLS}""",
+                display_name,
+                email,
+                handle,
+            )
+        except asyncpg.UniqueViolationError as e:
+            if "handle" in (e.constraint_name or ""):
+                raise AccountError("HANDLE_TAKEN", f"@{handle} is taken") from e
+            raise AccountError(
+                "EMAIL_TAKEN", "There's already an account with this email. Sign in instead."
+            ) from e
+        assert row is not None
         await conn.execute(
-            "UPDATE email_login_codes SET attempts = attempts + 1 WHERE id = $1", row["id"]
+            """INSERT INTO auth_identities
+                 (provider, subject, user_id, last_login_at, password_hash)
+               VALUES ('email', $1, $2, now(), $3)""",
+            email,
+            row["id"],
+            password_hash,
         )
-        return False
+    return _profile(row)
+
+
+async def password_login(pool: Pool, email: str) -> tuple[str, str | None] | None:
+    """(user id, password hash) for an email login, or None if there isn't one.
+    The hash is None for old accounts from before passwords (they can't sign in this way)."""
+    row = await pool.fetchrow(
+        """SELECT user_id, password_hash FROM auth_identities
+           WHERE provider = 'email' AND lower(subject) = lower($1)""",
+        email,
+    )
+    return (str(row["user_id"]), row["password_hash"]) if row else None
+
+
+async def touch_login(pool: Pool, provider: str, subject: str) -> None:
+    await pool.execute(
+        """UPDATE auth_identities SET last_login_at = now()
+           WHERE provider = $1 AND lower(subject) = lower($2)""",
+        provider,
+        subject,
+    )
 
 
 # --- Preferences ----------------------------------------------------------

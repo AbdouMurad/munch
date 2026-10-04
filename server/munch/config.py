@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     # OAuth client ids whose Google ID tokens we accept, comma-separated (iOS, Android, web).
     google_client_ids: str = ""
     session_ttl: timedelta = timedelta(days=30)
-    login_code_ttl: timedelta = timedelta(minutes=10)
-    login_code_max_attempts: int = 5
-    login_codes_per_hour: int = 5  # per email
+    # Password sign-in: this many wrong passwords for one email locks it for login_lockout.
+    login_max_failures: int = 10
+    login_lockout: timedelta = timedelta(minutes=15)
     invite_ttl: timedelta = timedelta(minutes=30)
 
     @property
