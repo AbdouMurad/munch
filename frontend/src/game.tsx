@@ -299,6 +299,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // The host pressed Start. Here are the cards! Everyone goes to the swipe screen.
       if (message.type === 'room:started') {
+        // A brand new game is starting, so the LAST game's ending is old news.
+        // Without this, after "Play again" we still believed the game was over
+        // and never left the lobby, and a second tap on Start game then failed
+        // with "Room is not waiting to start".
+        gameOver.current = false;
         setDeck(payload.deck);
         setStartAt(payload.resumeAt);
         setMyYes(0);
