@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account';
-import { Logo, Taxi, useCity } from '@/city';
+import { CardTaxi, Logo, useCity } from '@/city';
 import { InvitesInbox } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { useAppTheme } from '@/theme';
@@ -72,7 +72,7 @@ export default function HomeScreen() {
             ]}>
             {city ? (
               // In a special city: that city's taxi drives across the card.
-              <Taxi width={176} />
+              <CardTaxi width={184} />
             ) : (
               // Anywhere else: the bullseye. A ring (a circle with just a colored edge)...
               <View style={[styles.ring, { borderColor: colors.accent }]}>

@@ -18,7 +18,10 @@ import { useAppTheme } from '@/theme';
 // ---------- The special cities ----------
 // lat / lng = where the middle of the city is on the map.
 // logo      = the "munch <City>" picture for the home screen.
-// taxi      = the moving taxi picture (a GIF) for loading screens.
+// darkLogo  = the same logo in dark-mode colors (cream word on dark brown).
+// taxi      = the moving taxi picture (a GIF) for loading screens. Yellow background.
+// darkTaxi  = the same taxi on a DARK background, for loading screens in dark mode.
+// cardTaxi  = the same taxi on a WHITE background, for the white card on the home screen.
 // To add a new city: add its two pictures to assets/images/cities/ and
 // add one more block here. Nothing else needs to change.
 const CITIES = [
@@ -27,21 +30,32 @@ const CITIES = [
     lat: 49.2827,
     lng: -123.1207,
     logo: require('@/assets/images/cities/logo-vancouver.png'),
+    darkLogo: require('@/assets/images/cities/logo-dark-vancouver.png'),
     taxi: require('@/assets/images/cities/taxi-vancouver.gif'),
+    darkTaxi: require('@/assets/images/cities/taxi-dark-vancouver.gif'),
+    cardTaxi: require('@/assets/images/cities/taxi-card-vancouver.gif'),
   },
   {
     name: 'Toronto',
     lat: 43.6532,
     lng: -79.3832,
     logo: require('@/assets/images/cities/logo-toronto.png'),
+    darkLogo: require('@/assets/images/cities/logo-dark-toronto.png'),
     taxi: require('@/assets/images/cities/taxi-toronto.gif'),
+    // TODO: this one is a still picture (it doesn't move). Swap in the moving version.
+    darkTaxi: require('@/assets/images/cities/taxi-dark-toronto.webp'),
+    cardTaxi: require('@/assets/images/cities/taxi-card-toronto.gif'),
   },
   {
     name: 'Edmonton',
     lat: 53.5461,
     lng: -113.4938,
     logo: require('@/assets/images/cities/logo-edmonton.png'),
+    darkLogo: require('@/assets/images/cities/logo-dark-edmonton.png'),
     taxi: require('@/assets/images/cities/taxi-edmonton.gif'),
+    // TODO: this one is a still picture (it doesn't move). Swap in the moving version.
+    darkTaxi: require('@/assets/images/cities/taxi-dark-edmonton.webp'),
+    cardTaxi: require('@/assets/images/cities/taxi-card-edmonton.gif'),
   },
 ];
 
@@ -56,10 +70,15 @@ const CLOSE_ENOUGH = 0.5;
 // When we don't know the city, loading screens still need SOME taxi.
 // We use the first city's (Vancouver), because that's where our restaurants are.
 const DEFAULT_TAXI = CITIES[0].taxi;
+const DEFAULT_DARK_TAXI = CITIES[0].darkTaxi;
 
 // The yellow that the logo and taxi pictures are painted on. We paint the box
 // behind them the same yellow, so in dark mode they look like tidy yellow stickers.
 const PICTURE_YELLOW = '#FFE45C';
+// The same idea for the dark-mode taxi pictures: the dark brown they are painted on.
+const PICTURE_DARK = '#1A0D0A';
+// And the dark brown that the dark-mode LOGO pictures are painted on.
+const LOGO_DARK = '#2A1715';
 
 // Given a spot on the map, which special city is it in?
 // Gives back null (= "none of them") if it isn't near any.
@@ -122,7 +141,7 @@ export function useCity() {
 //   In a special city: the "munch <City>" picture.
 //   Anywhere else:     just the word "munch".
 export function Logo() {
-  const { colors } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const city = useCity();
 
   if (!city) {
@@ -130,8 +149,10 @@ export function Logo() {
   }
   return (
     <Image
-      source={city.logo}
-      style={styles.cityLogo}
+      // Dark mode gets the dark logo, light mode gets the yellow one.
+      source={isDark ? city.darkLogo : city.logo}
+      // Paint the box behind it the same color as the picture's own background.
+      style={[styles.cityLogo, { backgroundColor: isDark ? LOGO_DARK : PICTURE_YELLOW }]}
       contentFit="contain" // show the whole picture, don't crop it
       accessibilityLabel={`munch ${city.name}`}
     />
@@ -139,15 +160,55 @@ export function Logo() {
 }
 
 // ---------- <Taxi /> ----------
-// The moving taxi picture. Its colors match the city we are in.
+// The moving taxi picture for loading screens. Its colors match the city we
+// are in, and its background matches the mode: yellow in light mode, dark
+// brown in dark mode.
 // "width" is how wide to draw it. The height is worked out from that,
 // so the taxi always keeps its shape (the GIF is 600 wide and 334 tall).
 export function Taxi({ width }: { width: number }) {
+  const { isDark } = useAppTheme();
   const city = useCity();
+
+  // Pick the picture: first by mode (dark or light), then by city.
+  // No special city? Use the default taxi.
+  let picture;
+  if (isDark) {
+    picture = city ? city.darkTaxi : DEFAULT_DARK_TAXI;
+  } else {
+    picture = city ? city.taxi : DEFAULT_TAXI;
+  }
+
   return (
     <Image
-      source={city ? city.taxi : DEFAULT_TAXI}
-      style={[styles.taxi, { width: width, height: (width * 334) / 600 }]}
+      source={picture}
+      style={[
+        styles.taxi,
+        {
+          width: width,
+          height: (width * 334) / 600,
+          // Paint the box behind it the same color as the picture's own background.
+          backgroundColor: isDark ? PICTURE_DARK : PICTURE_YELLOW,
+        },
+      ]}
+      contentFit="contain"
+      accessibilityLabel="A taxi driving along"
+    />
+  );
+}
+
+// ---------- <CardTaxi /> ----------
+// The same taxi, but on a WHITE background, made to sit on the white card on
+// the home screen. It only exists for the special cities, so if we aren't in
+// one it draws nothing (the home screen shows the bullseye instead).
+// It is the white picture in BOTH light mode and dark mode, on purpose.
+// (Unlike <Taxi />, it never looks at which mode we're in.)
+export function CardTaxi({ width }: { width: number }) {
+  const city = useCity();
+  if (!city) return null;
+  return (
+    <Image
+      source={city.cardTaxi}
+      style={[styles.cardTaxi, { width: width, height: (width * 334) / 600 }]}
       contentFit="contain"
       accessibilityLabel="A taxi driving along"
     />
@@ -177,16 +238,17 @@ const styles = StyleSheet.create({
     width: 124,
     height: 46,
     borderRadius: 10,
-    backgroundColor: PICTURE_YELLOW,
   },
 
   loading: {
     alignItems: 'center',
     gap: 8,
   },
+  cardTaxi: {
+    borderRadius: 10, // soft corners, so it looks neat on a dark card too
+  },
   taxi: {
     borderRadius: 14,
-    backgroundColor: PICTURE_YELLOW,
   },
   loadingLabel: {
     fontSize: 16,
