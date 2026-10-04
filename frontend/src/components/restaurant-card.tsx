@@ -22,15 +22,22 @@ export function messyTilt(placeInDeck: number) {
 }
 
 // One printed restaurant card: a photo on top, the name and details underneath.
+// "showPhoto" is false for cards buried deep in a pile, so they don't load a photo
+// nobody can see (the swipe screen's CARDS_WITH_PHOTOS). Leave it out to show it.
 // "children" is anything extra to draw on top of the card (the swipe glows, stickers).
 // Used by the swipe screen and the results stack, so both look exactly the same.
-export function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }) {
+export function RestaurantCard({ card, showPhoto = true, children }: {
+  card: Card;
+  showPhoto?: boolean;
+  children?: ReactNode;
+}) {
   const { colors } = useAppTheme();
-  const photo = photoAddress(card);
+  const photo = showPhoto ? photoAddress(card) : null;
   return (
     <ChunkyBox background={colors.card} radius={20}>
       {/* Top half: the restaurant photo. The eye mascot sits underneath,
-          so it shows while the photo loads, or if there is no photo. */}
+          so it shows while the photo loads, or if there is no photo
+          (or if this card is too deep in the pile to bother with one). */}
       <View style={[styles.photo, { backgroundColor: colors.soft }]}>
         <Eye size={160} />
         {photo && (

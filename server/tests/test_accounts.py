@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from jwt.algorithms import RSAAlgorithm
 from pydantic import ValidationError
 
+from munch.accounts.avatars import check_avatar, image_type
 from munch.accounts.errors import AccountError
 from munch.accounts.google import GoogleVerifier
 from munch.accounts.tokens import (
@@ -114,6 +115,20 @@ async def test_google_unconfigured() -> None:
     assert e.value.code == "UNAVAILABLE"
 
 
+# --- profile pictures -------------------------------------------------------
+
+
+def test_image_type_sniffing() -> None:
+    assert image_type(b"\xff\xd8\xff\xe0rest") == "image/jpeg"
+    assert image_type(b"\x89PNG\r\n\x1a\nrest") == "image/png"
+    assert image_type(b"RIFF\x00\x00\x00\x00WEBPrest") == "image/webp"
+    assert image_type(b"GIF89a") is None
+    with pytest.raises(AccountError):
+        check_avatar(b"")
+    with pytest.raises(AccountError):
+        check_avatar(b"<svg onload=alert(1)>")
+
+
 # --- contract --------------------------------------------------------------
 
 
@@ -123,6 +138,9 @@ def test_account_models_validate() -> None:
         EmailCodeRequest(email="not-an-email")
     with pytest.raises(ValidationError):
         UpdateProfileRequest(handle="no spaces!")
+    with pytest.raises(ValidationError):
+        UpdateProfileRequest(handle="ab")  # too short
+    assert UpdateProfileRequest(handle=" @sam_eats ").handle == "sam_eats"
     with pytest.raises(ValidationError):
         AddFriendRequest()  # needs a handle or a userId
     with pytest.raises(ValidationError):

@@ -28,7 +28,9 @@ async def accept_invite(invite_id: str, user: CurrentUser, state: StateDep) -> R
     code = await repo.get_pending_invite(pool, invite_id, user.id)
     profile = await repo.get_profile(pool, user.id)
     try:
-        room, member = state.rooms.join_room(code, profile.display_name, user_id=user.id)
+        room, member = state.rooms.join_room(
+            code, profile.display_name, user_id=user.id, avatar_url=profile.avatar_url
+        )
     except RoomError:  # room gone or already started
         await repo.set_invite_status(pool, invite_id, "expired")
         raise

@@ -56,7 +56,7 @@ async def build_test_db(admin_url: str) -> str:
             await conn.execute("CREATE EXTENSION citext")
         except asyncpg.PostgresError:  # not installed here; a plain text stand-in will do
             await conn.execute("CREATE DOMAIN citext AS text")
-        for name in ("003_accounts.sql", "004_room_invites.sql"):
+        for name in ("003_accounts.sql", "004_room_invites.sql", "005_user_avatars.sql"):
             sql = (MIGRATIONS_DIR / name).read_text()
             await conn.execute(sql.replace("CREATE EXTENSION IF NOT EXISTS citext;", ""))
         ids = [r["id"] for r in load_fixtures()]
@@ -160,6 +160,20 @@ def test_google_links_to_email_account(client: TestClient) -> None:
     assert resp.json()["isNew"] and resp.json()["user"]["email"] is None
 
 
+def test_google_picture_is_the_default(client: TestClient) -> None:
+    # made with an email code: no picture yet
+    by_email = sign_in(client, "sam@example.com")
+    assert by_email["user"]["avatarUrl"] is None
+    # first Google sign-in with the same address fills in the Google picture
+    resp = client.post("/api/auth/google", json={"idToken": "g-1:sam@example.com"})
+    assert resp.json()["user"]["avatarUrl"] == "https://p"
+    # an uploaded picture is never replaced by Google's
+    headers = {**by_email["headers"], "Content-Type": "image/jpeg"}
+    mine = client.put("/api/me/avatar", content=JPEG, headers=headers).json()["avatarUrl"]
+    resp = client.post("/api/auth/google", json={"idToken": "g-1:sam@example.com"})
+    assert resp.json()["user"]["avatarUrl"] == mine
+
+
 def test_logout(client: TestClient) -> None:
     sam = sign_in(client, "sam@example.com")
     assert client.post("/api/auth/logout", headers=sam["headers"]).status_code == 204
@@ -176,8 +190,12 @@ def test_profile_and_handle(client: TestClient) -> None:
     )
     assert resp.json()["handle"] == "sam_eats" and resp.json()["displayName"] == "Sam"
     alex = sign_in(client, "alex@example.com")
-    resp = client.patch("/api/me", json={"handle": "sam_eats"}, headers=alex["headers"])
+    resp = client.patch("/api/me", json={"handle": "@sam_eats"}, headers=alex["headers"])
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "HANDLE_TAKEN"
+    assert resp.json()["error"]["message"] == "@sam_eats is taken"
+    bad = client.patch("/api/me", json={"handle": "sam eats!"}, headers=alex["headers"])
+    assert bad.status_code == 422
+    assert bad.json()["error"]["message"] == "Handles need 3-20 letters, numbers or _"
 
 
 def test_preferences(client: TestClient) -> None:
@@ -342,3 +360,47 @@ def test_start_expires_invites_and_records_swipes(client: TestClient, test_db_ur
     wait_for(lambda: len(swipes()) == 1)
     assert tuple(swipes()[0]) == (sam["user"]["id"], first, True)
     wait_for(lambda: client.get("/api/me/invites", headers=alex["headers"]).json()["invites"] == [])
+
+
+# --- profile pictures --------------------------------------------------------
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 200  # starts like a real JPEG
+
+
+def test_avatar_upload_show_and_remove(client: TestClient) -> None:
+    sam = sign_in(client, "sam@example.com")
+    headers = {**sam["headers"], "Content-Type": "image/jpeg"}
+
+    me = client.put("/api/me/avatar", content=JPEG, headers=headers).json()
+    url = me["avatarUrl"]
+    assert url.startswith(f"/api/users/{sam['user']['id']}/avatar?v=")
+    assert client.get("/api/me", headers=sam["headers"]).json()["avatarUrl"] == url
+
+    pic = client.get(url)
+    assert pic.status_code == 200 and pic.content == JPEG
+    assert pic.headers["content-type"] == "image/jpeg"
+
+    # a new upload gets a new URL, so phones don't keep showing the old picture
+    again = client.put("/api/me/avatar", content=JPEG + b"x", headers=headers).json()
+    assert again["avatarUrl"] != url
+
+    # the lobby shows it next to the player
+    room = client.post(
+        "/api/rooms", json={"displayName": "Sam", "center": CENTER}, headers=sam["headers"]
+    ).json()
+    members = client.get(f"/api/rooms/{room['code']}").json()["members"]
+    assert members[0]["avatarUrl"] == again["avatarUrl"]
+
+    gone = client.delete("/api/me/avatar", headers=sam["headers"]).json()
+    assert gone["avatarUrl"] is None
+    assert client.get(url).status_code == 404
+
+
+def test_avatar_rejects_non_images(client: TestClient) -> None:
+    sam = sign_in(client, "sam@example.com")
+    headers = {**sam["headers"], "Content-Type": "image/jpeg"}
+    resp = client.put("/api/me/avatar", content=b"<html>not a picture", headers=headers)
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    big = b"\xff\xd8\xff" + b"\x00" * 1_000_001
+    assert client.put("/api/me/avatar", content=big, headers=headers).status_code == 400
+    assert client.put("/api/me/avatar", content=JPEG).status_code == 401  # not signed in

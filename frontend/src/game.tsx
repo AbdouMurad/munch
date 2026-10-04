@@ -35,6 +35,7 @@ export type Member = {
   isHost: boolean;
   progress: number; // how many cards they have swiped
   userId: string | null; // their account, if they signed in (null = guest)
+  avatarUrl: string | null; // their profile picture, if they have one
 };
 
 // One restaurant card.
@@ -59,14 +60,27 @@ export function photoAddress(card: Card) {
 }
 
 // How many cards ahead we download photos for, so a photo is already there
-// when its card shows up.
-export const PRELOAD_AHEAD = 5;
+// when its card shows up. 10 = one whole pile on the swipe screen.
+export const PRELOAD_AHEAD = 10;
 
-// Start downloading these cards' photos in the background (no waiting).
-// When the card shows up later, its photo comes straight from the phone's memory.
+// Before the swipe screen opens, we wait for the first pile's photos to finish
+// downloading. But never longer than this (in milliseconds), so slow internet
+// (or a broken photo) can't keep everyone stuck in the lobby.
+const LONGEST_PHOTO_WAIT = 3000; // 3 seconds
+
+// Start downloading these cards' photos and keep them in the phone's memory.
+// When the card shows up later, its photo is already there: no loading.
+// It hands back a "promise": a note that says "I'll tell you when I'm done".
+// You can wait for it (await) or just ignore it and carry on.
 export function preloadPhotos(cards: Card[]) {
   const addresses = cards.map(photoAddress).filter((address) => address !== null);
-  if (addresses.length > 0) Image.prefetch(addresses);
+  if (addresses.length === 0) return Promise.resolve(true); // nothing to download
+  return Image.prefetch(addresses);
+}
+
+// A promise that finishes after this many milliseconds. A little alarm clock.
+function wait(milliseconds: number) {
+  return new Promise((done) => setTimeout(done, milliseconds));
 }
 
 // Everything about the room.
@@ -117,6 +131,8 @@ type Game = {
   searchFarther: () => void; // host only: add restaurants from farther away
   resumeSwiping: (atCard: number) => void; // back to swiping after new cards arrived
   playAgain: () => void; // game over: back to this room's lobby for another round
+  loadingCards: boolean; // true while we download the first photos, right after Start
+  connecting: boolean; // true from pressing Create/Join until the lobby opens
   createRoom: (name: string, radiusM: number, filters: Filters) => void;
   joinRoom: (code: string, name: string) => void;
   enterWithSession: (session: Session) => void; // e.g. after accepting a friend's invite
@@ -144,6 +160,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [myNope, setMyNope] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
+  const [loadingCards, setLoadingCards] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  // True once the server has told us how the game ended.
+  // (A "ref" is a box that remembers one thing without redrawing the screen.)
+  const gameOver = useRef(false);
 
   // If we're signed in, rooms we make or join are linked to our account.
   const account = useAccount();
@@ -164,6 +186,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     setError('');
+    // We're on our way! Screens show the loading taxi while this is true.
+    // (This can take a while if the server was asleep and has to wake up.)
+    setConnecting(true);
     try {
       const response = await fetch(SERVER_URL + path, {
         method: 'POST',
@@ -178,6 +203,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // The server said no (wrong code, game already started, ...).
       if (!response.ok) {
         setError(data.error.message);
+        setConnecting(false);
         return;
       }
 
@@ -187,6 +213,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } catch {
       // We couldn't even reach the server.
       setError('Could not reach the server. Is it running?');
+      setConnecting(false);
     }
   }
 
@@ -215,6 +242,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setRoom(null);
     setDeck([]);
     setResult(null);
+    setLoadingCards(false);
+    gameOver.current = false;
 
     const socket = new WebSocket(
       `${SOCKET_URL}/ws/${session.code}?memberId=${session.memberId}&token=${session.memberToken}`,
@@ -236,6 +265,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setRoom(payload);
         if (waitingForFirstMessage) {
           waitingForFirstMessage = false;
+          setConnecting(false); // we made it: stop the loading taxi
           router.push('/lobby');
         }
       }
@@ -249,13 +279,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // The host pressed Start. Here are the cards! Everyone goes to the swipe screen.
       if (message.type === 'room:started') {
-        // Get the first photos downloading right away, before the swipe screen even opens.
-        preloadPhotos(payload.deck.slice(payload.resumeAt, payload.resumeAt + PRELOAD_AHEAD));
         setDeck(payload.deck);
         setStartAt(payload.resumeAt);
         setMyYes(0);
         setMyNope(0);
-        router.replace('/swipe');
+        // Download the first pile's photos, THEN open the swipe screen.
+        getCardsReady(payload.deck.slice(payload.resumeAt, payload.resumeAt + PRELOAD_AHEAD));
       }
 
       // One friend swiped a card. Update just that friend's progress.
@@ -275,12 +304,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
           matched: true,
           picks: [{ card: payload.card, likes: payload.likedBy.length }],
         });
+        gameOver.current = true;
         router.replace('/winner');
       }
 
       // Everyone finished and nobody agreed. Show the most-liked spots instead.
       if (message.type === 'room:exhausted') {
         setResult({ matched: false, picks: payload.topPicks });
+        gameOver.current = true;
         router.replace('/winner');
       }
 
@@ -292,7 +323,29 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     // This runs if the phone call drops.
     // TODO: try to call back automatically instead of just showing a message
-    socket.onclose = () => setError('Lost the connection to the server.');
+    socket.onclose = () => {
+      setError('Lost the connection to the server.');
+      setConnecting(false);
+    };
+  }
+
+  // The game just started and we have the cards. Before showing the swipe
+  // screen, download the photos for the first pile, so the cards don't show up
+  // with empty pictures that pop in one by one.
+  async function getCardsReady(firstCards: Card[]) {
+    setLoadingCards(true); // the lobby shows "Getting the cards ready..."
+
+    // A race between two things. We carry on as soon as EITHER one finishes:
+    //   1. all the photos are downloaded, or
+    //   2. the alarm clock rings (so we never wait too long).
+    await Promise.race([preloadPhotos(firstCards), wait(LONGEST_PHOTO_WAIT)]);
+
+    setLoadingCards(false);
+
+    // While we were waiting, did the game end or did we leave the room?
+    // Then we must NOT jump to the swipe screen.
+    if (gameOver.current || !socketRef.current) return;
+    router.replace('/swipe');
   }
 
   // Say something to the server through the socket.
@@ -366,6 +419,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         searchFarther,
         resumeSwiping,
         playAgain,
+        loadingCards,
+        connecting,
         createRoom,
         joinRoom,
         enterWithSession,

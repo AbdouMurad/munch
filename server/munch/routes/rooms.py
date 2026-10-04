@@ -4,7 +4,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from munch.accounts.deps import OptionalUser
+from munch.accounts import repo
+from munch.accounts.deps import AuthUser, OptionalUser
 from munch.models import (
     CreateRoomRequest,
     ErrorResponse,
@@ -14,11 +15,18 @@ from munch.models import (
     RoomStateMessage,
 )
 from munch.rooms.manager import LiveMember, LiveRoom
-from munch.state import StateDep
+from munch.state import AppState, StateDep
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 NOT_FOUND: dict[int | str, dict[str, Any]] = {404: {"model": ErrorResponse}}
+
+
+async def avatar_of(state: AppState, user: AuthUser | None) -> str | None:
+    """A signed-in player's picture, shown next to them in the lobby."""
+    if user is None or state.db_pool is None:
+        return None
+    return (await repo.get_profile(state.db_pool, user.id)).avatar_url
 
 
 def session(room: LiveRoom, member: LiveMember) -> RoomSession:
@@ -36,6 +44,7 @@ async def create_room(body: CreateRoomRequest, state: StateDep, user: OptionalUs
         body.radius_m,
         body.filters,
         user_id=user.id if user else None,
+        avatar_url=await avatar_of(state, user),
     )
     return session(room, member)
 
@@ -44,7 +53,12 @@ async def create_room(body: CreateRoomRequest, state: StateDep, user: OptionalUs
 async def join_room(
     code: str, body: JoinRoomRequest, state: StateDep, user: OptionalUser
 ) -> RoomSession:
-    room, member = state.rooms.join_room(code, body.display_name, user_id=user.id if user else None)
+    room, member = state.rooms.join_room(
+        code,
+        body.display_name,
+        user_id=user.id if user else None,
+        avatar_url=await avatar_of(state, user),
+    )
     await state.hub.broadcast(room, RoomStateMessage(payload=room.to_state()))
     return session(room, member)
 

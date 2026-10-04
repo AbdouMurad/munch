@@ -79,6 +79,7 @@ class LiveMember:
     is_host: bool
     joined_at: datetime
     user_id: str | None = None  # signed-in account; None for guests
+    avatar_url: str | None = None
     progress: int = 0
     left_at: datetime | None = None
     connections: int = 0
@@ -131,6 +132,7 @@ class LiveRoom:
                     is_host=m.is_host,
                     progress=m.progress,
                     user_id=m.user_id,
+                    avatar_url=m.avatar_url,
                 )
                 for m in self.active_members()
             ],
@@ -212,6 +214,7 @@ class RoomManager:
         filters: Filters,
         *,
         user_id: str | None = None,
+        avatar_url: str | None = None,
     ) -> tuple[LiveRoom, LiveMember]:
         now = self._clock()
         room = LiveRoom(
@@ -226,10 +229,17 @@ class RoomManager:
             last_activity=now,
         )
         self._rooms[room.code] = room
-        return room, self._add_member(room, display_name, is_host=True, user_id=user_id)
+        return room, self._add_member(
+            room, display_name, is_host=True, user_id=user_id, avatar_url=avatar_url
+        )
 
     def join_room(
-        self, code: str, display_name: str, *, user_id: str | None = None
+        self,
+        code: str,
+        display_name: str,
+        *,
+        user_id: str | None = None,
+        avatar_url: str | None = None,
     ) -> tuple[LiveRoom, LiveMember]:
         room = self.get(code)
         if room.status != "lobby":
@@ -238,7 +248,9 @@ class RoomManager:
             for m in room.active_members():
                 if m.user_id == user_id:
                     return room, m
-        return room, self._add_member(room, display_name, is_host=False, user_id=user_id)
+        return room, self._add_member(
+            room, display_name, is_host=False, user_id=user_id, avatar_url=avatar_url
+        )
 
     def begin_start(self, room: LiveRoom, member_id: str) -> None:
         """Validate a Start and lock the room while the caller builds the deck."""
@@ -419,7 +431,13 @@ class RoomManager:
                 return code
 
     def _add_member(
-        self, room: LiveRoom, display_name: str, *, is_host: bool, user_id: str | None = None
+        self,
+        room: LiveRoom,
+        display_name: str,
+        *,
+        is_host: bool,
+        user_id: str | None = None,
+        avatar_url: str | None = None,
     ) -> LiveMember:
         now = self._clock()
         member = LiveMember(
@@ -429,6 +447,7 @@ class RoomManager:
             is_host=is_host,
             joined_at=now,
             user_id=user_id,
+            avatar_url=avatar_url,
             disconnected_at=now,
         )
         room.members[member.id] = member
