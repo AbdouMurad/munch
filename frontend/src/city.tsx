@@ -18,9 +18,9 @@ import { useAppTheme } from '@/theme';
 // ---------- The special cities ----------
 // lat / lng = where the middle of the city is on the map.
 // logo      = the "munch <City>" picture for the home screen.
-// darkLogo  = the same logo in dark-mode colors (cream word on dark brown).
+// darkLogo  = the same logo in dark-mode colors (cream word, see-through background).
 // taxi      = the moving taxi picture (a GIF) for loading screens. Yellow background.
-// darkTaxi  = the same taxi on a DARK background, for loading screens in dark mode.
+// darkTaxi  = the same taxi on a DARK background, for dark mode (loading screens and the home card).
 // cardTaxi  = the same taxi on a WHITE background, for the white card on the home screen.
 // To add a new city: add its two pictures to assets/images/cities/ and
 // add one more block here. Nothing else needs to change.
@@ -75,10 +75,10 @@ const DEFAULT_DARK_TAXI = CITIES[0].darkTaxi;
 // The yellow that the logo and taxi pictures are painted on. We paint the box
 // behind them the same yellow, so in dark mode they look like tidy yellow stickers.
 const PICTURE_YELLOW = '#FFE45C';
-// The same idea for the dark-mode taxi pictures: the dark brown they are painted on.
-const PICTURE_DARK = '#1A0D0A';
-// And the dark brown that the dark-mode LOGO pictures are painted on.
-const LOGO_DARK = '#2A1715';
+// The same idea for the dark-mode taxi pictures. They are painted on the SAME
+// brown as the cards in dark mode (colors.card in theme.tsx), so a taxi sitting
+// on a card has no visible edge.
+const PICTURE_DARK = '#2A1A16';
 
 // Given a spot on the map, which special city is it in?
 // Gives back null (= "none of them") if it isn't near any.
@@ -151,8 +151,10 @@ export function Logo() {
     <Image
       // Dark mode gets the dark logo, light mode gets the yellow one.
       source={isDark ? city.darkLogo : city.logo}
-      // Paint the box behind it the same color as the picture's own background.
-      style={[styles.cityLogo, { backgroundColor: isDark ? LOGO_DARK : PICTURE_YELLOW }]}
+      // The light logo is painted on yellow, so we paint its box yellow too.
+      // The dark logo has a see-through background, so it needs no box at all:
+      // it sits straight on the screen's own dark background.
+      style={[styles.cityLogo, { backgroundColor: isDark ? 'transparent' : PICTURE_YELLOW }]}
       contentFit="contain" // show the whole picture, don't crop it
       accessibilityLabel={`munch ${city.name}`}
     />
@@ -197,17 +199,18 @@ export function Taxi({ width }: { width: number }) {
 }
 
 // ---------- <CardTaxi /> ----------
-// The same taxi, but on a WHITE background, made to sit on the white card on
-// the home screen. It only exists for the special cities, so if we aren't in
-// one it draws nothing (the home screen shows the bullseye instead).
-// It is the white picture in BOTH light mode and dark mode, on purpose.
-// (Unlike <Taxi />, it never looks at which mode we're in.)
+// The taxi for the card on the home screen. Its background matches the mode:
+// white in light mode (the card is white), dark brown in dark mode (the card is dark).
+// It only exists for the special cities, so if we aren't in one it draws
+// nothing (the home screen shows the bullseye instead).
 export function CardTaxi({ width }: { width: number }) {
+  const { isDark } = useAppTheme();
   const city = useCity();
   if (!city) return null;
   return (
     <Image
-      source={city.cardTaxi}
+      // Dark mode gets the dark taxi, light mode gets the white one.
+      source={isDark ? city.darkTaxi : city.cardTaxi}
       style={[styles.cardTaxi, { width: width, height: (width * 334) / 600 }]}
       contentFit="contain"
       accessibilityLabel="A taxi driving along"
