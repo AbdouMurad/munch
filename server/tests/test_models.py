@@ -46,3 +46,14 @@ def test_server_message_envelope() -> None:
         "type": "member:progress",
         "payload": {"memberId": "m1", "progress": 3},
     }
+
+
+def test_stamps_only_for_known_cities() -> None:
+    from pydantic import ValidationError
+
+    from munch.models import AddStampRequest
+
+    assert AddStampRequest.model_validate({"city": "Edmonton"}).city == "Edmonton"
+    for bad in ("Atlantis", "vancouver", ""):
+        with pytest.raises(ValidationError):
+            AddStampRequest.model_validate({"city": bad})

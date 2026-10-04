@@ -7,9 +7,11 @@ from munch.accounts.avatars import MAX_AVATAR_BYTES, check_avatar
 from munch.accounts.deps import CurrentUser, require_pool
 from munch.accounts.errors import AccountError
 from munch.models import (
+    AddStampRequest,
     InvitesResponse,
     MyProfile,
     Preferences,
+    StampsResponse,
     UpdateProfileRequest,
 )
 from munch.state import StateDep
@@ -22,6 +24,18 @@ IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 @router.get("")
 async def get_me(user: CurrentUser, state: StateDep) -> MyProfile:
     return await repo.get_profile(require_pool(state), user.id)
+
+
+@router.get("/stamps")
+async def get_stamps(user: CurrentUser, state: StateDep) -> StampsResponse:
+    """My passport: the special cities I've used the app in, oldest first."""
+    return StampsResponse(stamps=await repo.list_stamps(require_pool(state), user.id))
+
+
+@router.post("/stamps")
+async def add_stamp(body: AddStampRequest, user: CurrentUser, state: StateDep) -> StampsResponse:
+    """Stamp my passport for the city the phone is in. Safe to call on every app open."""
+    return StampsResponse(stamps=await repo.add_stamp(require_pool(state), user.id, body.city))
 
 
 @router.patch("")

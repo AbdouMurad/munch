@@ -404,3 +404,26 @@ def test_avatar_rejects_non_images(client: TestClient) -> None:
     big = b"\xff\xd8\xff" + b"\x00" * 1_000_001
     assert client.put("/api/me/avatar", content=big, headers=headers).status_code == 400
     assert client.put("/api/me/avatar", content=JPEG).status_code == 401  # not signed in
+
+
+# --- city stamps -----------------------------------------------------------
+
+
+def test_city_stamps(client: TestClient) -> None:
+    sam = sign_in(client, "sam@example.com")
+    assert client.get("/api/me/stamps", headers=sam["headers"]).json() == {"stamps": []}
+
+    for city in ("Vancouver", "Toronto", "Vancouver"):  # a repeat visit adds nothing
+        resp = client.post("/api/me/stamps", json={"city": city}, headers=sam["headers"])
+        assert resp.status_code == 200
+    stamps = resp.json()["stamps"]
+    assert [s["city"] for s in stamps] == ["Vancouver", "Toronto"]  # oldest first
+    assert all("firstVisitedAt" in s for s in stamps)
+
+    bad = client.post("/api/me/stamps", json={"city": "Atlantis"}, headers=sam["headers"])
+    assert bad.status_code == 422
+    assert client.post("/api/me/stamps", json={"city": "Vancouver"}).status_code == 401
+
+    # Stamps are per person.
+    alex = sign_in(client, "alex@example.com")
+    assert client.get("/api/me/stamps", headers=alex["headers"]).json() == {"stamps": []}
