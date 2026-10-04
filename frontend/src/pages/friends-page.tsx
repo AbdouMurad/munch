@@ -1,15 +1,16 @@
-import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { displayHandle, Friendship, FriendsList, useAccount } from '@/account';
 import { Field, Message, SmallButton } from '@/components/account-ui';
-import { Avatar, BackButton, ChunkyButton, Screen } from '@/components/ui';
+import { Avatar, ChunkyButton } from '@/components/ui';
 import { initials } from '@/game';
+import { Page, SignInFirst } from '@/pages/page';
 import { useAppTheme } from '@/theme';
 
-// FRIENDS SCREEN: add people by their handle, answer requests, see your friends.
-export default function FriendsScreen() {
+// FRIENDS PAGE (swipe left from Play): add people by their handle, answer requests,
+// see your friends. You can also add someone from a game lobby ("Add friend").
+export default function FriendsPage() {
   const { colors } = useAppTheme();
   const account = useAccount();
 
@@ -33,8 +34,14 @@ export default function FriendsScreen() {
       .catch((e: Error) => setMessage({ text: e.message, problem: true }));
   }, [account.me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!account.ready) return null;
-  if (!account.me) return <Redirect href="/signin" />;
+  if (!account.ready) return <Page title="Friends">{null}</Page>;
+  if (!account.me) {
+    return (
+      <Page title="Friends">
+        <SignInFirst why="Sign in to add friends and invite them straight into your games." />
+      </Page>
+    );
+  }
 
   // Run one change on the server, then load the list again.
   async function change(path: string, method: string, body?: object, done = '') {
@@ -56,12 +63,7 @@ export default function FriendsScreen() {
   }
 
   return (
-    <Screen>
-      <View style={styles.topBar}>
-        <BackButton onPress={() => router.back()} />
-        <Text style={[styles.topTitle, { color: colors.text }]}>Friends</Text>
-      </View>
-
+    <Page title="Friends">
       <Field
         label="Add by handle"
         value={handle}
@@ -117,7 +119,7 @@ export default function FriendsScreen() {
           )}
         </>
       )}
-    </Screen>
+    </Page>
   );
 }
 
@@ -148,15 +150,6 @@ function People({ title, people, children }: {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  topTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
   section: {
     gap: 4,
   },

@@ -1,213 +1,214 @@
-import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account';
-import { InvitesInbox } from '@/components/account-ui';
-import { ChunkyButton } from '@/components/ui';
+import { Avatar, Eye } from '@/components/ui';
+import { initials } from '@/game';
+import FriendsPage from '@/pages/friends-page';
+import PlayPage from '@/pages/play-page';
+import ProfilePage from '@/pages/profile-page';
+import { Tab, TAB_ORDER, useTabs } from '@/tabs';
 import { useAppTheme } from '@/theme';
 
-// A "screen" is just a function that returns what we want to show.
+// The page for each tab, in the same left-to-right order as TAB_ORDER.
+const PAGES: Record<Tab, () => React.ReactNode> = {
+  profile: ProfilePage,
+  play: PlayPage,
+  friends: FriendsPage,
+};
+
+// HOME SCREEN: three pages side by side, like Instagram.
+//     Profile   <-   Play   ->   Friends
+// Swipe right for your profile, swipe left for your friends, or tap the bar at the bottom.
 export default function HomeScreen() {
-  // Grab our colors, and the switch that flips light/dark mode.
-  const { colors, isDark, toggleDark } = useAppTheme();
-  const account = useAccount();
+  const { colors } = useAppTheme();
+  const { width } = useWindowDimensions(); // each page is exactly one screen wide
+  const { tab, setTab } = useTabs();
+  const scrollRef = useRef<ScrollView>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const index = TAB_ORDER.indexOf(tab);
+
+  // When the tab changes (a tap on the bar, or another screen asked for it), slide there.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: index * width, animated: true });
+  }, [index, width]);
+
+  // While you swipe, wait until the pages stop moving, then light up that tab in the bar.
+  // (Waiting matters: a tap from Profile to Friends slides PAST Play on the way.)
+  function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const x = event.nativeEvent.contentOffset.x;
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      const landedOn = TAB_ORDER[Math.round(x / width)];
+      if (landedOn) setTab(landedOn);
+    }, 80);
+  }
 
   return (
-    // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* ---------- TOP: the app name and the light/dark button ---------- */}
-      <View style={styles.topBar}>
-        <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
-        {/* Signed in? Go to your profile. Not yet? Sign in. */}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(account.me ? '/profile' : '/signin')}
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            {account.me ? 'PROFILE' : 'SIGN IN'}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          onPress={toggleDark}
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            {isDark ? 'LIGHT' : 'DARK'}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Friends asking you to join their game (only when signed in). */}
-      <InvitesInbox />
-
-      {/* ---------- MIDDLE: the picture and the words ---------- */}
-      <View style={styles.middle}>
-        {/* The picture is made of 3 boxes stacked on top of each other. */}
-        <View style={styles.illustration}>
-          {/* Box 1: the card hiding at the back, tilted a little */}
-          <View
-            style={[
-              styles.card,
-              styles.backCard,
-              { backgroundColor: colors.card, borderColor: colors.text },
-            ]}
-          />
-
-          {/* Box 2: the front card, tilted the other way */}
-          <View
-            style={[
-              styles.card,
-              styles.frontCard,
-              { backgroundColor: colors.card, borderColor: colors.text },
-            ]}>
-            {/* A ring (a circle with just a colored edge)... */}
-            <View style={[styles.ring, { borderColor: colors.accent }]}>
-              {/* ...with a dot inside it. */}
-              <View style={[styles.dot, { backgroundColor: colors.dot }]} />
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={[styles.screen, { backgroundColor: colors.background }]}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled // stop exactly on a page, never halfway between two
+        showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        // Open on the right page (Play, unless another screen picked one).
+        onLayout={() => scrollRef.current?.scrollTo({ x: index * width, animated: false })}
+        style={styles.pager}>
+        {TAB_ORDER.map((name) => {
+          const PageContent = PAGES[name];
+          return (
+            <View key={name} style={{ width }}>
+              <PageContent />
             </View>
-          </View>
+          );
+        })}
+      </ScrollView>
 
-          {/* Box 3: the "OH YES" sticker in the top-right corner */}
-          <View
-            style={[styles.sticker, { backgroundColor: colors.accent, borderColor: colors.text }]}>
-            <Text style={[styles.stickerText, { color: colors.onAccent }]}>OH YES</Text>
-          </View>
-        </View>
-
-        <Text style={[styles.title, { color: colors.text }]}>
-          Swipe together.{'\n'}Eat together.
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.softText }]}>
-          Everyone swipes the same spots. The place your group agrees on most wins.
-        </Text>
-      </View>
-
-      {/* ---------- BOTTOM: the buttons ---------- */}
-      <View style={styles.bottom}>
-        <ChunkyButton label="Start a game" primary onPress={() => router.push('/create')} />
-        <ChunkyButton label="Join with a code" onPress={() => router.push('/join')} />
-        <Text style={[styles.footnote, { color: colors.softText }]}>
-          Friends can join without an account
-        </Text>
-      </View>
+      <NavBar />
     </SafeAreaView>
   );
 }
 
-// All the "how it looks" rules live down here.
-// Colors are NOT here, because they change with light/dark mode (see above).
-// Only sizes, spacing, and positions live here, because those never change.
+// ---------- The bar at the bottom ----------
+// One button per page. The page you're on is filled in.
+function NavBar() {
+  const { colors } = useAppTheme();
+  const { tab, setTab } = useTabs();
+  const account = useAccount();
+
+  const items: { name: Tab; label: string; icon: React.ReactNode }[] = [
+    {
+      name: 'profile',
+      label: 'Profile',
+      // Signed in: your initials, like Instagram's little profile picture.
+      icon: account.me ? (
+        <Avatar initials={initials(account.me.displayName)} />
+      ) : (
+        <View style={[styles.personIcon, { borderColor: colors.text }]} />
+      ),
+    },
+    { name: 'play', label: 'Play', icon: <Eye size={34} /> },
+    {
+      name: 'friends',
+      label: 'Friends',
+      // Two little overlapping circles = "people".
+      icon: (
+        <View style={styles.friendsIcon}>
+          <View style={[styles.friendDot, { borderColor: colors.text }]} />
+          <View
+            style={[
+              styles.friendDot,
+              styles.secondFriend,
+              { borderColor: colors.text, backgroundColor: colors.card },
+            ]}
+          />
+        </View>
+      ),
+    },
+  ];
+
+  return (
+    <View style={[styles.bar, { backgroundColor: colors.card, borderColor: colors.text }]}>
+      {items.map((item) => {
+        const on = item.name === tab;
+        return (
+          <Pressable
+            key={item.name}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={item.label}
+            onPress={() => setTab(item.name)}
+            style={[styles.barItem, on && { backgroundColor: colors.soft }]}>
+            <View style={styles.iconBox}>{item.icon}</View>
+            <Text
+              style={[
+                styles.barLabel,
+                { color: on ? colors.text : colors.softText, fontWeight: on ? '900' : '600' },
+              ]}>
+              {item.label}
+            </Text>
+            {/* A little bar under the page you're on. */}
+            <View
+              style={[styles.underline, { backgroundColor: on ? colors.accent : 'transparent' }]}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingHorizontal: 20,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: 8,
-  },
-  appName: {
-    flex: 1, // pushes the buttons to the right
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  themeButton: {
-    borderWidth: 2,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  themeButtonText: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-
-  // The middle part grows to fill the leftover space and centers its stuff.
-  middle: {
+  pager: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  illustration: {
-    width: 240,
-    height: 260,
-    marginBottom: 24,
   },
 
-  // Both cards share this: rounded, with an outline.
-  card: {
-    position: 'absolute', // "absolute" lets boxes overlap each other
-    width: 200,
-    height: 220,
-    borderWidth: 2,
-    borderRadius: 18,
-  },
-  backCard: {
-    left: 20,
-    top: 30,
-    transform: [{ rotate: '8deg' }],
-  },
-  frontCard: {
-    left: 5,
-    top: 20,
-    transform: [{ rotate: '-5deg' }],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // A circle = a square with really round corners (borderRadius = half the size).
-  ring: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dot: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-  },
-  sticker: {
-    position: 'absolute',
-    top: 0,
-    right: -10,
-    borderWidth: 2,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    transform: [{ rotate: '8deg' }],
-  },
-  stickerText: {
-    fontWeight: '900',
-    fontSize: 16,
-  },
-
-  title: {
-    fontSize: 38,
-    fontWeight: '900',
-    textAlign: 'center',
-    lineHeight: 42,
-  },
-  subtitle: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 12,
+  bar: {
+    flexDirection: 'row',
+    borderTopWidth: 2,
     paddingHorizontal: 8,
+    paddingTop: 6,
+  },
+  barItem: {
+    flex: 1, // three equal slots
+    alignItems: 'center',
+    gap: 2,
+    paddingTop: 6,
+    borderRadius: 12,
+  },
+  iconBox: {
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barLabel: {
+    fontSize: 12,
+  },
+  underline: {
+    width: 28,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 4,
+    marginBottom: 4,
   },
 
-  bottom: {
-    gap: 14,
-    paddingBottom: 8,
+  personIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 3,
   },
-  footnote: {
-    fontSize: 13,
-    textAlign: 'center',
+  friendsIcon: {
+    width: 40,
+    height: 30,
+  },
+  friendDot: {
+    position: 'absolute',
+    left: 2,
+    top: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 3,
+  },
+  secondFriend: {
+    left: 12,
   },
 });
