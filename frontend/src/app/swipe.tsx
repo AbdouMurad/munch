@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { Redirect, router } from 'expo-router';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -116,16 +116,16 @@ function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }
           {card.name}
         </Text>
         {/* Something like "Ramen · $$ · 1.2 km" */}
-        <Text numberOfLines={1} style={{ color: colors.softText }}>
+        <Text numberOfLines={1} style={[styles.detail, { color: colors.softText }]}>
           {describe(card)}
         </Text>
         {card.rating && (
-          <Text style={{ color: colors.text }}>
+          <Text numberOfLines={1} style={[styles.detail, { color: colors.text }]}>
             ★ {card.rating} ({card.ratingCount} reviews)
           </Text>
         )}
         {card.address && (
-          <Text numberOfLines={1} style={{ color: colors.softText }}>
+          <Text numberOfLines={1} style={[styles.detail, { color: colors.softText }]}>
             {card.address}
           </Text>
         )}
@@ -203,11 +203,6 @@ export default function SwipeScreen() {
     ).start(() => setIsDealing(false)); // all landed: you can swipe now!
   }, [falls]);
 
-  // Not in a room (for example, the page was refreshed)? Go back home.
-  if (!room) return <Redirect href="/" />;
-  // No card left to show? Then we are done.
-  if (!card) return <Redirect href="/done" />;
-
   // Tell the server what we thought, then show the next card.
   // If that was the last card, go to the "done" screen.
   // (If EVERYONE liked this one, the server says so and game.tsx jumps to the winner.)
@@ -233,11 +228,20 @@ export default function SwipeScreen() {
     }
   }
 
+  // True while a card is flying off the screen. A second tap during that
+  // fifth of a second is ignored, so one card can't be answered twice.
+  // (A "ref" is a little box that remembers something without redrawing the screen.)
+  const flying = useRef(false);
+
   // Slide the card off the side of the screen, THEN count the answer.
   // Buttons and swipes both use this.
   function flyAway(liked: boolean) {
-    // Cards still falling? Wait for them to land first.
-    if (isDealing) return;
+    // Cards still falling, or a card already flying? Then this tap doesn't count.
+    if (isDealing || flying.current) {
+      springBack();
+      return;
+    }
+    flying.current = true;
     Animated.timing(dragX, {
       toValue: liked ? 500 : -500, // far enough to be off the screen
       duration: 200, // takes 200 milliseconds (a fifth of a second)
@@ -248,29 +252,54 @@ export default function SwipeScreen() {
       // starts at 0 (the middle). We do NOT slide the old card back: it is
       // gone for good, so nothing jumps or flickers.
       setDragX(new Animated.Value(0));
+      flying.current = false;
     });
   }
 
-  // This watches your finger on the card.
-  const panResponder = PanResponder.create({
-    // Only start a drag if the finger moves sideways a little.
-    // (So a plain tap, or scrolling up and down, doesn't move the card.)
-    onMoveShouldSetPanResponder: (_, finger) => Math.abs(finger.dx) > 5,
-    // Don't let the scrolling screen steal the finger halfway through a drag.
-    onPanResponderTerminationRequest: () => false,
-    // While dragging: the card follows the finger. (dx = how far it has moved sideways)
-    onPanResponderMove: (_, finger) => dragX.setValue(finger.dx),
-    // When the finger lets go: far right = yes, far left = nope, otherwise bounce back.
-    onPanResponderRelease: (_, finger) => {
-      if (finger.dx > SWIPE_DISTANCE) {
-        flyAway(true);
-      } else if (finger.dx < -SWIPE_DISTANCE) {
-        flyAway(false);
-      } else {
-        Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
-      }
-    },
+  // Let go too early (or the drag got interrupted)? The card bounces back to the middle.
+  function springBack() {
+    if (flying.current) return; // it's on its way out, leave it alone
+    Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
+  }
+
+  // The finger-watcher (below) is made only ONCE, so a drag keeps working even
+  // when the screen redraws in the middle of it (which happens every time a
+  // friend swipes). It reads the latest card's dragX and functions from here.
+  const latest = useRef({ dragX, flyAway, springBack });
+  useEffect(() => {
+    latest.current = { dragX, flyAway, springBack };
   });
+
+  // This watches your finger on the card.
+  const [panResponder] = useState(() =>
+    PanResponder.create({
+      // Only start a drag if the finger moves sideways a little.
+      // (So a plain tap, or scrolling up and down, doesn't move the card.)
+      onMoveShouldSetPanResponder: (_, finger) => Math.abs(finger.dx) > 5,
+      // Don't let the scrolling screen steal the finger halfway through a drag.
+      onPanResponderTerminationRequest: () => false,
+      // While dragging: the card follows the finger. (dx = how far it has moved sideways)
+      onPanResponderMove: (_, finger) => latest.current.dragX.setValue(finger.dx),
+      // When the finger lets go: far right = yes, far left = nope, otherwise bounce back.
+      onPanResponderRelease: (_, finger) => {
+        if (finger.dx > SWIPE_DISTANCE) {
+          latest.current.flyAway(true);
+        } else if (finger.dx < -SWIPE_DISTANCE) {
+          latest.current.flyAway(false);
+        } else {
+          latest.current.springBack();
+        }
+      },
+      // Something interrupted the drag (the phone or browser took over)? Bounce back.
+      onPanResponderTerminate: () => latest.current.springBack(),
+    }),
+  );
+
+  // Not in a room (for example, the page was refreshed)? Go back home.
+  if (!room) return <Redirect href="/" />;
+  // No card left to show? Then we are done.
+  if (!card) return <Redirect href="/done" />;
+
 
   // These numbers FOLLOW dragX. "interpolate" means: when dragX is this, I am that.
   // The card tilts a little as it moves, like a real card in your hand.
@@ -488,6 +517,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    // On a computer, dragging across words would highlight them like in a
+    // document. Cards aren't for reading-and-copying, so turn that off.
+    userSelect: 'none',
   },
   glow: {
     position: 'absolute', // stretched over the whole card
@@ -509,6 +541,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    // On a computer, dragging a picture makes the browser start its own
+    // "drag this image" move, which cancels our swipe halfway. This makes the
+    // mouse go straight through the picture to the card instead.
+    pointerEvents: 'none',
   },
   sticker: {
     position: 'absolute', // pinned near the top of the card
@@ -531,6 +567,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
   },
+  // Every line has an exact height, so the text always fits in the box:
+  // padding 32 + name 2 x 28 + 3 small lines x 18 + 3 gaps x 4 = 154 (of 156).
+  // Without exact heights, some fonts make the lines taller and the last
+  // line (usually the address) gets cut off at the bottom.
   info: {
     height: 156,
     padding: 16,
@@ -538,7 +578,13 @@ const styles = StyleSheet.create({
   },
   restaurantName: {
     fontSize: 24,
+    lineHeight: 28,
     fontWeight: '900',
+  },
+  // The small lines under the name: "Ramen · $$ · 1.2 km", the rating, the address.
+  detail: {
+    fontSize: 14,
+    lineHeight: 18,
   },
 
   buttons: {
