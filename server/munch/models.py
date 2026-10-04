@@ -82,9 +82,10 @@ class RoomState(CamelModel):
     status: RoomStatus
     members: list[Member]
     center: LatLng
-    radius_m: int
+    radius_m: int  # grows when the host searches farther mid-game
     filters: Filters
-    deck_size: int  # 0 until started
+    deck_size: int  # 0 until started; grows when the host searches farther
+    match_threshold: int = 0  # likes needed to match: ceil(2/3 of active members)
 
 
 class TopPick(CamelModel):
@@ -301,6 +302,24 @@ class RoomLeaveMessage(CamelModel):
     payload: EmptyPayload = Field(default_factory=EmptyPayload)
 
 
+class RoomExpandPayload(CamelModel):
+    radius_m: RadiusM | None = None  # None = the current radius + 2 km
+
+
+class RoomExpandMessage(CamelModel):
+    """Host widens the search mid-game; new, never-dealt cards go to the end of the deck."""
+
+    type: Literal["room:expand"]
+    payload: RoomExpandPayload = Field(default_factory=RoomExpandPayload)
+
+
+class RoomReplayMessage(CamelModel):
+    """After the game ends: put the same room (code, players) back in the lobby."""
+
+    type: Literal["room:replay"]
+    payload: EmptyPayload = Field(default_factory=EmptyPayload)
+
+
 class RoomRerunPayload(CamelModel):
     radius_m: RadiusM | None = None
 
@@ -316,7 +335,13 @@ class PingMessage(CamelModel):
 
 
 ClientMessage = Annotated[
-    RoomStartMessage | SwipeMessage | RoomLeaveMessage | RoomRerunMessage | PingMessage,
+    RoomStartMessage
+    | SwipeMessage
+    | RoomLeaveMessage
+    | RoomExpandMessage
+    | RoomReplayMessage
+    | RoomRerunMessage
+    | PingMessage,
     Field(discriminator="type"),
 ]
 client_message_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
@@ -351,6 +376,8 @@ class MemberProgressMessage(CamelModel):
 
 
 class RoomMatchedPayload(CamelModel):
+    """The first restaurant enough of the room liked. It ends the game."""
+
     card: Card
     liked_by: list[str]
 
@@ -361,7 +388,19 @@ class RoomMatchedMessage(CamelModel):
 
 
 class RoomExhaustedPayload(CamelModel):
+    """Everyone swiped every card without a match."""
+
     top_picks: list[TopPick]
+
+
+class RoomDeckExtendedPayload(CamelModel):
+    cards: list[Card]  # append to the end of the deck
+    radius_m: int  # the room's new search radius
+
+
+class RoomDeckExtendedMessage(CamelModel):
+    type: Literal["room:deck_extended"] = "room:deck_extended"
+    payload: RoomDeckExtendedPayload
 
 
 class RoomExhaustedMessage(CamelModel):
@@ -385,6 +424,7 @@ ServerMessage = Annotated[
     | MemberProgressMessage
     | RoomMatchedMessage
     | RoomExhaustedMessage
+    | RoomDeckExtendedMessage
     | ErrorMessage
     | PongMessage,
     Field(discriminator="type"),

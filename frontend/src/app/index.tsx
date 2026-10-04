@@ -4,19 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account';
 import { InvitesInbox } from '@/components/account-ui';
-import { ChunkyButton } from '@/components/ui';
+import { ChunkyButton, DarkModeSwitch } from '@/components/ui';
 import { useAppTheme } from '@/theme';
 
 // A "screen" is just a function that returns what we want to show.
 export default function HomeScreen() {
-  // Grab our colors, and the switch that flips light/dark mode.
-  const { colors, isDark, toggleDark } = useAppTheme();
+  // Grab our colors.
+  const { colors } = useAppTheme();
   const account = useAccount();
 
   return (
     // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* ---------- TOP: the app name and the light/dark button ---------- */}
+      {/* ---------- TOP: the app name, sign in, and the dark mode switch ---------- */}
       <View style={styles.topBar}>
         <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
         {/* Signed in? Go to your profile. Not yet? Sign in. */}
@@ -28,15 +28,8 @@ export default function HomeScreen() {
             {account.me ? 'PROFILE' : 'SIGN IN'}
           </Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          onPress={toggleDark}
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            {isDark ? 'LIGHT' : 'DARK'}
-          </Text>
-        </Pressable>
+        {/* On/off switch for dark mode: a sun or a moon slides across. */}
+        <DarkModeSwitch />
       </View>
 
       {/* Friends asking you to join their game (only when signed in). */}

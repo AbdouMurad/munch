@@ -139,7 +139,7 @@ export default function JoinScreen() {
           ]}
           value={name}
           onChangeText={setName}
-          placeholder="Sam"
+          placeholder="James"
           placeholderTextColor={colors.softText}
           // Came from a link? The name is the only thing left to type, so
           // open the keyboard right away on this box.

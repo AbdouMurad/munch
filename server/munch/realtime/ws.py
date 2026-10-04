@@ -17,7 +17,11 @@ from munch.models import (
     MemberProgressPayload,
     PingMessage,
     PongMessage,
+    RoomDeckExtendedMessage,
+    RoomDeckExtendedPayload,
+    RoomExpandMessage,
     RoomLeaveMessage,
+    RoomReplayMessage,
     RoomRerunMessage,
     RoomStartedMessage,
     RoomStartedPayload,
@@ -79,7 +83,7 @@ async def send_snapshot(state: AppState, ws: WebSocket, room: LiveRoom, member: 
     """Everything a (re)connecting client needs to render the current screen."""
     await state.hub.send(ws, RoomStateMessage(payload=room.to_state()))
     if room.status in ("swiping", "matched", "exhausted"):
-        started = RoomStartedPayload(deck=room.deck, resume_at=member.progress)
+        started = RoomStartedPayload(deck=room.deck_for(member.id), resume_at=member.progress)
         await state.hub.send(ws, RoomStartedMessage(payload=started))
     if room.outcome is not None:
         await state.hub.send(ws, outcome_message(room.outcome))
@@ -120,10 +124,55 @@ async def handle(
             await hub.broadcast_change(room, outcome)
             return False
 
+        case RoomExpandMessage(payload=p):
+            await expand_room(state, room, member, p.radius_m)
+
+        case RoomReplayMessage():
+            rooms.replay(room)
+            await hub.broadcast(room, RoomStateMessage(payload=room.to_state()))
+
         case RoomRerunMessage():
             raise RoomError("BAD_STATE", "Run it back isn't supported yet")
 
     return True
+
+
+async def expand_room(
+    state: AppState, room: LiveRoom, member: LiveMember, radius_m: int | None
+) -> None:
+    """Host's "search farther": deal never-seen restaurants from a wider radius onto the end
+    of everyone's deck. Players who had finished get more cards to swipe."""
+    rooms, hub = state.rooms, state.hub
+    plan = rooms.begin_expand(room, member.id, radius_m)  # locks before we await
+    try:
+        cards = await state.build_deck(
+            room.center, plan.radius_m, room.filters, plan.seed, plan.exclude
+        )
+    except Exception as e:
+        rooms.abort_expand(room)
+        log.exception("build_deck (expand) failed for room %s", room.code)
+        raise RoomError("INTERNAL", "Couldn't search farther, try again") from e
+
+    added = rooms.finish_expand(room, plan.radius_m, cards)
+    if not added:
+        km = plan.radius_m / 1000
+        raise RoomError("NOT_FOUND", f"No new restaurants within {km:g} km")
+    # Each player gets the new cards in their own order (the batch goes after their deck).
+    old_size = len(room.deck) - len(added)
+    await asyncio.gather(
+        *(
+            hub.send_member(
+                m.id,
+                RoomDeckExtendedMessage(
+                    payload=RoomDeckExtendedPayload(
+                        cards=room.deck_for(m.id)[old_size:], radius_m=room.radius_m
+                    )
+                ),
+            )
+            for m in room.active_members()
+        )
+    )
+    await hub.broadcast(room, RoomStateMessage(payload=room.to_state()))
 
 
 async def start_room(state: AppState, room: LiveRoom, member: LiveMember) -> None:
@@ -145,7 +194,10 @@ async def start_room(state: AppState, room: LiveRoom, member: LiveMember) -> Non
     await asyncio.gather(
         *(
             hub.send_member(
-                m.id, RoomStartedMessage(payload=RoomStartedPayload(deck=deck, resume_at=0))
+                m.id,
+                RoomStartedMessage(
+                    payload=RoomStartedPayload(deck=room.deck_for(m.id), resume_at=0)
+                ),
             )
             for m in room.active_members()
         )

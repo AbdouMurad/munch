@@ -1,8 +1,16 @@
 // Little building blocks that many screens share.
 // We build each one ONCE here and reuse it everywhere. Less copy-paste!
 
-import { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { ReactNode, useEffect, useState } from 'react';
+import {
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useGame } from '@/game';
@@ -61,7 +69,10 @@ export function ChunkyButton({ label, primary = false, onPress }: {
   return (
     <Pressable accessibilityRole="button" onPress={onPress}>
       <ChunkyBox background={primary ? colors.primary : colors.card} style={styles.button}>
-        <Text style={[styles.buttonText, { color: primary ? colors.onPrimary : colors.text }]}>
+        {/* One line, centered. A label too long for the button ends in "…". */}
+        <Text
+          numberOfLines={1}
+          style={[styles.buttonText, { color: primary ? colors.onPrimary : colors.text }]}>
           {label}
         </Text>
       </ChunkyBox>
@@ -142,6 +153,48 @@ export function ErrorLine() {
   return <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>;
 }
 
+// ---------- DarkModeSwitch ----------
+// An on/off switch for dark mode. The round knob slides across and shows a sun
+// (light mode) or a moon (dark mode), drawn as text so it matches our colors.
+const TRACK_WIDTH = 56;
+const KNOB_SIZE = 22;
+// How far the knob slides: the track, minus its outline and padding, minus the knob.
+const KNOB_TRAVEL = TRACK_WIDTH - 2 * 2 - 2 * 2 - KNOB_SIZE;
+
+export function DarkModeSwitch() {
+  const { colors, isDark, toggleDark } = useAppTheme();
+
+  // 0 = knob on the left (light), 1 = knob on the right (dark). It glides between them.
+  const [slide] = useState(() => new Animated.Value(isDark ? 1 : 0));
+  useEffect(() => {
+    Animated.timing(slide, { toValue: isDark ? 1 : 0, duration: 180, useNativeDriver: false }).start();
+  }, [slide, isDark]);
+  const knobX = slide.interpolate({ inputRange: [0, 1], outputRange: [0, KNOB_TRAVEL] });
+
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel="Dark mode"
+      accessibilityState={{ checked: isDark }}
+      onPress={toggleDark}
+      style={[
+        styles.switchTrack,
+        { backgroundColor: isDark ? colors.primary : colors.soft, borderColor: colors.text },
+      ]}>
+      <Animated.View
+        style={[
+          styles.switchKnob,
+          { backgroundColor: colors.card, borderColor: colors.text, transform: [{ translateX: knobX }] },
+        ]}>
+        {/* "\uFE0E" asks for the plain text sun, not the colorful emoji one. */}
+        <Text style={[styles.switchSymbol, { color: colors.text }]}>
+          {isDark ? '☾' : '☀\uFE0E'}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 // ---------- ProgressBar ----------
 // A bar that fills up. "fraction" goes from 0 (empty) to 1 (full).
 export function ProgressBar({ fraction }: { fraction: number }) {
@@ -184,14 +237,38 @@ const styles = StyleSheet.create({
     overflow: 'hidden', // keeps things inside from poking past the round corners
   },
 
+  switchTrack: {
+    width: TRACK_WIDTH,
+    height: 30,
+    borderRadius: 15, // fully round ends
+    borderWidth: 2,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchKnob: {
+    width: KNOB_SIZE,
+    height: KNOB_SIZE,
+    borderRadius: KNOB_SIZE / 2, // a circle
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchSymbol: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '900',
+  },
+
   button: {
     height: 58,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16, // so long words don't touch the edges
   },
   buttonText: {
     fontSize: 18,
     fontWeight: '800',
+    textAlign: 'center',
   },
 
   backButton: {

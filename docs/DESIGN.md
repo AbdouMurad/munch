@@ -101,13 +101,14 @@ munch/
    - **Join room**: enter the code and a display name (or arrive via a join link, which pre-fills the code).
 2. **Lobby.** The room code is shown big, with a **Share** button (§3.1) and a QR code. The member list updates live. Only the host sees a **Start** button.
 3. **Swipe.** A card stack. Drag right or press ❤️ to like, drag left or press ✕ to pass. Arrow keys work on desktop. A small header shows each member's progress ("Sam: 12/80").
-4. **Match.** As soon as everyone has liked the same restaurant, every client switches to the Match screen: photo, name, rating, distance, and an "Open in Google Maps" button.
-5. **No match.** If everyone finishes the deck without a unanimous like, show the **top 3 by like count**. The host can **Run it back**, which deals a new deck from a larger radius (stretch goal).
+4. **Match.** The first restaurant liked by **⌈⅔ of the active players⌉** (2→2, 3→2, 4→3, 5→4, 6→4) wins: every client switches to the results screen.
+5. **Search farther.** Mid-game, the host can tap *Search farther*: the radius grows by 2 km and restaurants that were **never dealt** in this room are added to the end of everyone's deck (players who had finished go back to swiping).
+6. **Results.** The winner, or if everyone ran out of cards with no match, the **top 3 by like count**, shown as a pile of cards (swipe the top one to send it to the bottom). *Play again* takes everyone back to this room's lobby (`room:replay`).
 
 **Rules**
 - You can only join while the room is in `lobby`. Joining after Start returns 409.
-- A match requires a like from every member who hasn't left. If someone leaves mid-swipe, the quorum shrinks, so re-check for a match at that point.
-- Everyone gets the **same deck in the same order**. That gets the group to a match faster, and it's a deliberate choice.
+- A match needs likes from ⌈⅔⌉ of the members who haven't left; a pair must still agree. The first match ends the game. If someone leaves mid-swipe the bar drops, so re-check every liked restaurant at that point (the earliest in the deck wins).
+- Everyone gets the **same set of restaurants, each in their own order** (`personal_order` in `rooms/manager.py`): every card moves up to 12 places from its ranked position, seeded by the room seed and the member id. Friends aren't swiping the same card at the same moment, the best places still come early for everyone, and a reconnect gets the same order back. Cards from *Search farther* come after a player's existing cards, shuffled the same way.
 - If the host leaves, the oldest remaining member becomes host.
 
 ### 3.1 Joining with AirDrop
@@ -233,7 +234,8 @@ class RoomState(BaseModel):
     center: LatLng
     radius_m: int
     filters: Filters
-    deck_size: int                          # 0 until started
+    deck_size: int                          # 0 until started; grows on "search farther"
+    match_threshold: int                    # likes needed: ceil(2/3 of active members)
 ```
 
 The JSON on the wire uses **camelCase** (`displayName`, `distanceM`, ...). Set `model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)` on a shared `CamelModel` base, and have FastAPI serialize `by_alias=True`. Python code stays snake_case, and the frontend stays idiomatic.
@@ -268,7 +270,9 @@ Every message in both directions is a JSON envelope: `{ "type": "<name>", "paylo
 | `room:start` | `{}` | Host only, and only in `lobby` |
 | `swipe` | `{ restaurantId, liked }` | Idempotent: the server ignores repeats |
 | `room:leave` | `{}` | Marks the member as left and shrinks the quorum |
-| `room:rerun` | `{ radiusM? }` | Host only, in `exhausted` (stretch) |
+| `room:expand` | `{ radiusM? }` | Host only, in `swiping`. Default: current radius + 2 km (max 50 km) |
+| `room:replay` | `{}` | Anyone, once the game is over (`matched`/`exhausted`): the same room goes back to `lobby` (same code and players, new seed, everything else reset). Repeats are no-ops |
+| `room:rerun` | `{ radiusM? }` | Host only, in `exhausted` (stretch, not implemented) |
 | `ping` | `{}` | Keepalive every 20 s; the server replies `pong` |
 
 **Server → Client**
@@ -278,8 +282,10 @@ Every message in both directions is a JSON envelope: `{ "type": "<name>", "paylo
 | `room:state` | `RoomState` | On connect, and whenever members or status change |
 | `room:started` | `{ deck: Card[], resumeAt: int }` | Host started (or a client reconnected). The full deck is sent once, up to 80 cards. `resumeAt` is the member's own progress |
 | `member:progress` | `{ memberId, progress }` | After each swipe |
-| `room:matched` | `{ card: Card, likedBy: string[] }` | Unanimous like |
+| `room:matched` | `{ card: Card, likedBy: string[] }` | The first restaurant ⌈⅔⌉ of the room liked. Ends the game |
 | `room:exhausted` | `{ topPicks: [{ card: Card, likes: int }] }` | Everyone finished the deck with no match |
+| `room:deck_extended` | `{ cards: Card[], radiusM }` | The host searched farther; append `cards` to the deck (none were dealt before) |
+
 | `error` | `{ code, message }` | e.g. `NOT_HOST`, `BAD_STATE`, `UNAUTHORIZED` |
 | `pong` | `{}` | Reply to `ping` |
 
@@ -366,8 +372,10 @@ class LiveRoom:
 1. Validate that the room is `swiping`, the card is in the deck, and this member hasn't already swiped it. If any check fails, ignore the event.
 2. Record the swipe in `swiped`. If `liked`, add the member to `likes[restaurant_id]`.
 3. Insert into the `swipes` hypertable (background task) and broadcast `member:progress`.
-4. **Match check:** if `likes[restaurant_id] ⊇ active_members`, set status to `matched`, broadcast `room:matched`, and update `rooms`.
+4. **Match check:** if at least `match_threshold(active)` = ⌈⅔ × active⌉ active members like it, set status to `matched` and broadcast `room:matched`.
 5. **Exhaustion check:** if every active member has swiped the whole deck, set status to `exhausted` and broadcast `room:exhausted` with the top 3 restaurants by like count (ties broken by deck position).
+
+**On `room:expand`** (host): lock the room (`expanding`), build cards for `radius + 2 km` with `exclude` = every id already in the deck (the `DeckBuilder` takes an `exclude` set; the SQL filters `NOT id = ANY(...)`), append them, update `radius_m`, broadcast `room:deck_extended` then `room:state`. If nothing new is found, the radius still grows and the host gets a `NOT_FOUND` error.
 
 **On leave or disconnect:** an explicit `room:leave` removes the member from the quorum immediately. A socket disconnect does **not** count as leaving. It takes 2 minutes with no socket before the member is treated as left (so phones that lock their screen don't break the room). Whenever the quorum shrinks, re-run the match check over every liked restaurant.
 

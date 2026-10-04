@@ -18,8 +18,9 @@ def client() -> Iterator[TestClient]:
         yield c
 
 
-def create(client: TestClient, name: str = "Host") -> dict[str, Any]:
-    resp = client.post("/api/rooms", json={"displayName": name, "center": CENTER})
+def create(client: TestClient, name: str = "Host", radius_m: int = 3000) -> dict[str, Any]:
+    body_in = {"displayName": name, "center": CENTER, "radiusM": radius_m}
+    resp = client.post("/api/rooms", json=body_in)
     assert resp.status_code == 201
     body: dict[str, Any] = resp.json()
     return body
@@ -80,8 +81,11 @@ def test_full_game_to_match(client: TestClient) -> None:
 
             ws_a.send_json({"type": "room:start", "payload": {}})
             deck = recv_until(ws_a, "room:started")["payload"]["deck"]
-            assert recv_until(ws_b, "room:started")["payload"]["deck"] == deck
+            deck_b = recv_until(ws_b, "room:started")["payload"]["deck"]
             assert len(deck) > 0 and "distanceM" in deck[0]
+            # Same restaurants for everyone, but each player gets their own order.
+            assert sorted(c["id"] for c in deck_b) == sorted(c["id"] for c in deck)
+            assert [c["id"] for c in deck_b] != [c["id"] for c in deck]
 
             resp = client.post(f"/api/rooms/{host['code']}/join", json={"displayName": "Late"})
             assert resp.status_code == 409
@@ -103,6 +107,15 @@ def test_full_game_to_match(client: TestClient) -> None:
             assert recv_until(ws_b2, "room:started")["payload"]["resumeAt"] == 1
             assert recv_until(ws_b2, "room:matched")["payload"]["card"]["id"] == first
 
+            # Play again: the same room goes back to the lobby, then can start again.
+            ws_b2.send_json({"type": "room:replay"})
+            state = recv_until(ws_a, "room:state")["payload"]
+            assert state["status"] == "lobby" and state["code"] == host["code"]
+            assert state["deckSize"] == 0
+            assert [m["progress"] for m in state["members"]] == [0, 0]
+            ws_a.send_json({"type": "room:start"})
+            assert recv_until(ws_b2, "room:started")["payload"]["resumeAt"] == 0
+
 
 def test_leave_shrinks_quorum(client: TestClient) -> None:
     host = create(client)
@@ -114,7 +127,34 @@ def test_leave_shrinks_quorum(client: TestClient) -> None:
         recv_until(ws_a, "member:progress")
 
         ws_b.send_json({"type": "room:leave"})
+        # Alone now, so the bar is 1 like: the host's like on deck[2] wins.
         assert recv_until(ws_a, "room:matched")["payload"]["card"]["id"] == deck[2]["id"]
+
+
+def test_search_farther_deals_only_new_cards(client: TestClient) -> None:
+    host = create(client, radius_m=1000)
+    guest = join(client, host["code"], "Alex")
+    with connect(client, host) as ws_a, connect(client, guest) as ws_b:
+        ws_a.send_json({"type": "room:start"})
+        deck = recv_until(ws_a, "room:started")["payload"]["deck"]
+        recv_until(ws_b, "room:started")
+
+        ws_b.send_json({"type": "room:expand"})
+        assert recv_until(ws_b, "error")["payload"]["code"] == "NOT_HOST"
+
+        ws_a.send_json({"type": "room:expand"})  # default: +2 km
+        extended = recv_until(ws_b, "room:deck_extended")["payload"]
+        assert extended["radiusM"] == 3000
+        new_ids = [c["id"] for c in extended["cards"]]
+        assert new_ids and not set(new_ids) & {c["id"] for c in deck}
+        state = recv_until(ws_b, "room:state")["payload"]
+        assert state["deckSize"] == len(deck) + len(new_ids) and state["radiusM"] == 3000
+
+        # Everything nearby is dealt now: farther out, then nothing new at all.
+        ws_a.send_json({"type": "room:expand", "payload": {"radiusM": 50000}})
+        recv_until(ws_a, "room:deck_extended")
+        ws_a.send_json({"type": "room:expand", "payload": {"radiusM": 50000}})
+        assert recv_until(ws_a, "error")["payload"]["code"] == "BAD_STATE"  # can't go farther
 
 
 def test_ping_and_bad_message(client: TestClient) -> None:

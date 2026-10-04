@@ -1,6 +1,5 @@
-import { Image } from 'expo-image';
 import { Redirect, router } from 'expo-router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -12,16 +11,9 @@ import {
   ViewStyle,
 } from 'react-native';
 
-import { Avatar, ChunkyBox, ErrorLine, Eye, Screen } from '@/components/ui';
-import {
-  Card,
-  describe,
-  initials,
-  photoAddress,
-  PRELOAD_AHEAD,
-  preloadPhotos,
-  useGame,
-} from '@/game';
+import { messyDegrees, messyTilt, RestaurantCard } from '@/components/restaurant-card';
+import { Avatar, ChunkyBox, ErrorLine, Screen } from '@/components/ui';
+import { initials, PRELOAD_AHEAD, preloadPhotos, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // One of the round buttons under the card (nope, yes).
@@ -74,66 +66,6 @@ function fadeTo(direction: 'left' | 'right', color: string) {
     experimental_backgroundImage: gradient, // phones
     backgroundImage: gradient, // web browsers
   } as ViewStyle;
-}
-
-// Every card in the pile is turned a tiny bit, so the pile looks messy,
-// like real cards somebody stacked in a hurry.
-// The tilt LOOKS random, but it is worked out from the card's place in the deck,
-// so the same card always gets the same tilt and never wobbles when the screen redraws.
-function messyDegrees(placeInDeck: number) {
-  return ((placeInDeck * 37) % 7) - 3; // always a number from -3 to 3
-}
-function messyTilt(placeInDeck: number) {
-  return { rotate: `${messyDegrees(placeInDeck)}deg` };
-}
-
-// One printed restaurant card: a photo on top, the name and details underneath.
-// "children" is anything extra to draw on top of the card (we use it for the glow).
-function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }) {
-  const { colors } = useAppTheme();
-  const photo = photoAddress(card);
-  return (
-    <ChunkyBox background={colors.card} radius={20}>
-      {/* Top half: the restaurant photo. The eye mascot sits underneath,
-          so it shows while the photo loads, or if there is no photo. */}
-      <View style={[styles.photo, { backgroundColor: colors.soft }]}>
-        <Eye size={160} />
-        {photo && (
-          <Image
-            source={photo}
-            style={styles.photoImage}
-            contentFit="cover" // fill the box, cropping the edges if needed
-            transition={150} // fade in instead of popping in
-            accessibilityLabel={`Photo of ${card.name}`}
-          />
-        )}
-      </View>
-
-      {/* Bottom half: the name and details. Every card is the SAME height, so
-          they stack neatly. Long words get cut off with "..." (numberOfLines). */}
-      <View style={styles.info}>
-        <Text numberOfLines={2} style={[styles.restaurantName, { color: colors.text }]}>
-          {card.name}
-        </Text>
-        {/* Something like "Ramen · $$ · 1.2 km" */}
-        <Text numberOfLines={1} style={[styles.detail, { color: colors.softText }]}>
-          {describe(card)}
-        </Text>
-        {card.rating && (
-          <Text numberOfLines={1} style={[styles.detail, { color: colors.text }]}>
-            ★ {card.rating} ({card.ratingCount} reviews)
-          </Text>
-        )}
-        {card.address && (
-          <Text numberOfLines={1} style={[styles.detail, { color: colors.softText }]}>
-            {card.address}
-          </Text>
-        )}
-      </View>
-
-      {children}
-    </ChunkyBox>
-  );
 }
 
 // SWIPE SCREEN: look at one restaurant at a time and say yes or no.
@@ -334,6 +266,8 @@ export default function SwipeScreen() {
 
   // Count the friends who have finished all their cards.
   const finishedCount = room.members.filter((m) => m.progress >= room.deckSize).length;
+  // Only the host can search farther (and pick a match in the pop-up).
+  const isHost = room.members.some((m) => m.id === game.myId && m.isHost);
 
   return (
     <Screen>
@@ -357,6 +291,21 @@ export default function SwipeScreen() {
           <Text style={{ color: colors.softText }}>
             {finishedCount} of {room.members.length} finished
           </Text>
+        </View>
+
+        {/* Matches so far, and (for the host) a way to get more restaurants. */}
+        <View style={styles.row}>
+          <Text style={[styles.rule, { color: colors.text }]}>
+            ♥ First match wins
+            <Text style={{ color: colors.softText }}>
+              {'  '}({room.matchThreshold} likes)
+            </Text>
+          </Text>
+          {isHost && (
+            <Pressable accessibilityRole="button" onPress={game.searchFarther}>
+              <Text style={[styles.farther, { color: colors.text }]}>Search farther +2 km</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* One little circle per friend. A check means they are finished. */}
@@ -454,6 +403,7 @@ export default function SwipeScreen() {
 
       <ErrorLine />
 
+
       {/* ---------- BOTTOM: nope and yes ---------- */}
       <View style={styles.buttons}>
         <RoundButton
@@ -494,6 +444,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textDecorationLine: 'underline',
   },
+  rule: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  // Looks like the "Leave" link: a small underlined word button.
+  farther: {
+    fontSize: 14,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
   progress: {
     gap: 8,
   },
@@ -529,23 +489,6 @@ const styles = StyleSheet.create({
     right: 0,
     pointerEvents: 'none', // touches go straight through it to the card
   },
-  photo: {
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // The picture covers the whole photo box, on top of the mascot.
-  photoImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    // On a computer, dragging a picture makes the browser start its own
-    // "drag this image" move, which cancels our swipe halfway. This makes the
-    // mouse go straight through the picture to the card instead.
-    pointerEvents: 'none',
-  },
   sticker: {
     position: 'absolute', // pinned near the top of the card
     top: 18,
@@ -566,25 +509,6 @@ const styles = StyleSheet.create({
   stickerText: {
     fontSize: 22,
     fontWeight: '900',
-  },
-  // Every line has an exact height, so the text always fits in the box:
-  // padding 32 + name 2 x 28 + 3 small lines x 18 + 3 gaps x 4 = 154 (of 156).
-  // Without exact heights, some fonts make the lines taller and the last
-  // line (usually the address) gets cut off at the bottom.
-  info: {
-    height: 156,
-    padding: 16,
-    gap: 4,
-  },
-  restaurantName: {
-    fontSize: 24,
-    lineHeight: 28,
-    fontWeight: '900',
-  },
-  // The small lines under the name: "Ramen · $$ · 1.2 km", the rating, the address.
-  detail: {
-    fontSize: 14,
-    lineHeight: 18,
   },
 
   buttons: {

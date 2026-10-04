@@ -12,7 +12,7 @@ from munch.config import Settings
 from munch.models import Card, Filters, LatLng
 from munch.ranking.hours import is_open
 from munch.ranking.scoring import Candidate, ScoreParams, diversify, rank
-from munch.rooms.fixture_deck import DeckBuilder
+from munch.rooms.fixture_deck import NO_EXCLUDE, DeckBuilder
 
 TZ = ZoneInfo("America/Vancouver")
 MAX_CANDIDATES = 1000
@@ -20,7 +20,8 @@ MAX_EXPANSIONS = 3  # double the radius up to this many times if too few places
 # Too broad to count as "the same cuisine twice in a row".
 GENERIC_TYPES = {"restaurant", "food", "meal_takeaway", "meal_delivery"}
 
-# $1 lat, $2 lng (PostGIS points are lng, lat), $3 radius m, $4 limit, then filters.
+# $1 lat, $2 lng (PostGIS points are lng, lat), $3 radius m, $4 limit, then filters,
+# $11 ids to exclude.
 CANDIDATES_SQL = """
 SELECT id, name, lat, lng, rating, rating_count, price_level, primary_type, types, address,
        photo_name, maps_uri, opening_hours,
@@ -33,6 +34,7 @@ WHERE ST_DWithin(location, ST_MakePoint($2, $1)::geography, $3)
   AND NOT (types && $8::text[])
   AND ($9::real IS NULL OR rating >= $9)
   AND rating_count >= $10
+  AND NOT (id = ANY($11::text[]))  -- already dealt (search farther mid-game)
 ORDER BY location <-> ST_MakePoint($2, $1)::geography
 LIMIT $4
 """
@@ -51,7 +53,12 @@ def params_from(settings: Settings) -> ScoreParams:
 
 
 async def fetch_candidates(
-    pool: asyncpg.Pool, center: LatLng, radius_m: float, filters: Filters, now: datetime
+    pool: asyncpg.Pool,
+    center: LatLng,
+    radius_m: float,
+    filters: Filters,
+    now: datetime,
+    exclude: frozenset[str] = NO_EXCLUDE,
 ) -> list[Candidate]:
     rows = await pool.fetch(
         CANDIDATES_SQL,
@@ -65,6 +72,7 @@ async def fetch_candidates(
         filters.exclude_types,
         filters.min_rating,
         filters.min_reviews,
+        list(exclude),
     )
     candidates = []
     for r in rows:
@@ -113,24 +121,32 @@ async def build_deck(
     seed: int,
     settings: Settings,
     now: datetime | None = None,
+    exclude: frozenset[str] = NO_EXCLUDE,
 ) -> list[Card]:
     """Up to settings.deck_size cards, widening the radius if fewer than min_candidates match.
-    `now` (for open_now) defaults to the current Vancouver time."""
+    `now` (for open_now) defaults to the current Vancouver time. Restaurants in `exclude`
+    are never dealt."""
     now = now or datetime.now(TZ)
     radius: float = radius_m
-    candidates = await fetch_candidates(pool, center, radius, filters, now)
+    candidates = await fetch_candidates(pool, center, radius, filters, now, exclude)
     for _ in range(MAX_EXPANSIONS):
         if len(candidates) >= settings.min_candidates:
             break
         radius *= 2
-        candidates = await fetch_candidates(pool, center, radius, filters, now)
+        candidates = await fetch_candidates(pool, center, radius, filters, now, exclude)
     return order_deck(candidates, radius, seed, params_from(settings), settings.deck_size)
 
 
 def make_deck_builder(pool: asyncpg.Pool, settings: Settings) -> DeckBuilder:
-    """Adapter to the server's DeckBuilder signature: (center, radius_m, filters, seed)."""
+    """Adapter to the server's DeckBuilder signature."""
 
-    async def builder(center: LatLng, radius_m: int, filters: Filters, seed: int) -> list[Card]:
-        return await build_deck(pool, center, radius_m, filters, seed, settings)
+    async def builder(
+        center: LatLng,
+        radius_m: int,
+        filters: Filters,
+        seed: int,
+        exclude: frozenset[str] = NO_EXCLUDE,
+    ) -> list[Card]:
+        return await build_deck(pool, center, radius_m, filters, seed, settings, exclude=exclude)
 
     return builder

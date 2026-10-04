@@ -2,8 +2,23 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from munch.models import Card, Filters, LatLng, RoomExhaustedPayload, RoomMatchedPayload
-from munch.rooms.manager import CODE_ALPHABET, LiveMember, LiveRoom, RoomError, RoomManager
+from munch.models import (
+    Card,
+    Filters,
+    LatLng,
+    RoomExhaustedPayload,
+    RoomMatchedPayload,
+)
+from munch.rooms.manager import (
+    CODE_ALPHABET,
+    SHUFFLE_WINDOW,
+    LiveMember,
+    LiveRoom,
+    RoomError,
+    RoomManager,
+    match_threshold,
+    personal_order,
+)
 
 CENTER = LatLng(lat=49.2827, lng=-123.1207)
 
@@ -113,16 +128,26 @@ def test_empty_deck_exhausts_immediately(mgr: RoomManager) -> None:
 # --- Swiping --------------------------------------------------------------
 
 
-def test_match_requires_everyone(mgr: RoomManager) -> None:
-    room, (a, b, c) = started(mgr, 3)
-    assert mgr.swipe(room, a, "b", True).outcome is None  # type: ignore[union-attr]
-    assert mgr.swipe(room, b, "b", True).outcome is None  # type: ignore[union-attr]
-    result = mgr.swipe(room, c, "b", True)
-    assert result is not None
-    assert isinstance(result.outcome, RoomMatchedPayload)
-    assert result.outcome.card.id == "b"
-    assert result.outcome.liked_by == [a, b, c]
+@pytest.mark.parametrize("players,needed", [(1, 1), (2, 2), (3, 2), (4, 3), (5, 4), (6, 4), (8, 6)])
+def test_match_threshold_is_two_thirds_rounded_up(players: int, needed: int) -> None:
+    assert match_threshold(players) == needed
+
+
+def test_first_match_on_two_thirds_wins(mgr: RoomManager) -> None:
+    room, (a, b, _) = started(mgr, 3)
+    first = mgr.swipe(room, a, "b", True)
+    assert first is not None and first.outcome is None
+    result = mgr.swipe(room, b, "b", True)  # 2 of 3 is enough
+    assert result is not None and isinstance(result.outcome, RoomMatchedPayload)
+    assert result.outcome.card.id == "b" and result.outcome.liked_by == [a, b]
     assert room.status == "matched"
+    assert mgr.swipe(room, a, "c", True) is None  # the game is over
+
+
+def test_pairs_must_agree(mgr: RoomManager) -> None:
+    room, (a, _) = started(mgr, 2)
+    result = mgr.swipe(room, a, "a", True)
+    assert result is not None and result.outcome is None and room.status == "swiping"
 
 
 def test_swipe_is_idempotent_and_validated(mgr: RoomManager) -> None:
@@ -158,14 +183,14 @@ def test_exhaustion_top_picks(mgr: RoomManager) -> None:
 # --- Leaving --------------------------------------------------------------
 
 
-def test_leave_shrinks_quorum_and_matches(mgr: RoomManager) -> None:
-    room, (a, b, c) = started(mgr, 3)
-    mgr.swipe(room, a, "c", True)
-    mgr.swipe(room, b, "c", True)
-    mgr.swipe(room, a, "a", True)
-    mgr.swipe(room, b, "a", True)
-    outcome = mgr.leave(room, c)
-    # both "a" and "c" are now unanimous; the earlier card in the deck wins
+def test_leave_lowers_the_bar_and_matches(mgr: RoomManager) -> None:
+    room, (a, b, _, d) = started(mgr, 4)  # needs 3 of 4
+    for rid in ("c", "a"):
+        mgr.swipe(room, a, rid, True)
+        mgr.swipe(room, b, rid, True)
+    assert room.status == "swiping"
+    outcome = mgr.leave(room, d)  # 3 left: 2 likes are enough now
+    # both "a" and "c" qualify; the earlier card in the deck wins
     assert isinstance(outcome, RoomMatchedPayload) and outcome.card.id == "a"
 
 
@@ -206,7 +231,7 @@ def test_disconnect_grace_only_while_swiping(mgr: RoomManager, clock: FakeClock)
     clock.advance(seconds=1)
     result = mgr.sweep()
     assert not other.active
-    # host liked "a" and is now the whole quorum
+    # host liked "a" and is now the whole room, so it's a match
     assert len(result.changed) == 1
     outcome = result.changed[0][1]
     assert isinstance(outcome, RoomMatchedPayload) and outcome.card.id == "a"
@@ -238,3 +263,118 @@ def test_rooms_are_cleaned_up(mgr: RoomManager, clock: FakeClock) -> None:
     assert mgr.sweep().removed == [idle]
     with pytest.raises(RoomError):
         mgr.get(idle.code)
+
+
+# --- Play again -------------------------------------------------------------
+
+
+def test_play_again_resets_to_lobby(mgr: RoomManager) -> None:
+    room, (a, b) = started(mgr, 2)
+    with pytest.raises(RoomError) as e:
+        mgr.replay(room)  # still swiping
+    assert e.value.code == "BAD_STATE"
+    mgr.swipe(room, a, "c", True)
+    mgr.swipe(room, b, "c", True)  # match: game over
+    old_seed = room.seed
+
+    mgr.replay(room)
+    assert room.status == "lobby" and room.outcome is None and room.ended_at is None
+    assert room.deck == [] and room.likes == {}
+    assert all(m.progress == 0 for m in room.members.values())
+    assert room.seed != old_seed
+    mgr.replay(room)  # a second player pressing Play again is fine
+
+    joined_room, late = mgr.join_room(room.code, "Late")  # new friends can join
+    assert joined_room is room and late.active
+    mgr.begin_start(room, a)  # and the host can start a new round
+    assert mgr.finish_start(room, list(DECK)) is None
+    status: str = room.status  # (mypy still thinks it's "lobby" from the assert above)
+    assert status == "swiping"
+
+
+# --- Searching farther ----------------------------------------------------
+
+
+def test_search_farther_plan(mgr: RoomManager) -> None:
+    room, (a, b) = started(mgr, 2)
+    with pytest.raises(RoomError) as e:
+        mgr.begin_expand(room, b, None)
+    assert e.value.code == "NOT_HOST"
+
+    plan = mgr.begin_expand(room, a, None)
+    assert plan.radius_m == 5000  # 3000 + 2 km
+    assert plan.exclude == {"a", "b", "c"}
+    assert plan.seed != room.seed
+    with pytest.raises(RoomError):
+        mgr.begin_expand(room, a, None)  # one at a time
+
+    added = mgr.finish_expand(room, plan.radius_m, [card("c"), card("d"), card("e")])
+    assert [c.id for c in added] == ["d", "e"]  # never deals a card twice
+    assert [c.id for c in room.deck] == ["a", "b", "c", "d", "e"]
+    assert room.radius_m == 5000 and not room.expanding
+
+
+def test_search_farther_gives_finished_players_more_cards(mgr: RoomManager) -> None:
+    room, (a, b) = started(mgr, 2)
+    for rid in ("a", "b", "c"):
+        mgr.swipe(room, a, rid, False)
+    plan = mgr.begin_expand(room, a, None)
+    mgr.finish_expand(room, plan.radius_m, [card("d")])
+    for rid in ("a", "b", "c"):
+        result = mgr.swipe(room, b, rid, False)
+    assert result is not None and result.outcome is None  # a still has "d" to swipe
+    result = mgr.swipe(room, a, "d", False)
+    assert result is not None and result.outcome is None  # b hasn't seen "d" yet
+    result = mgr.swipe(room, b, "d", False)
+    assert result is not None and isinstance(result.outcome, RoomExhaustedPayload)
+
+
+def test_search_farther_caps_radius(mgr: RoomManager) -> None:
+    room, (a, _) = started(mgr, 2)
+    plan = mgr.begin_expand(room, a, 50_000)
+    mgr.finish_expand(room, plan.radius_m, [])
+    with pytest.raises(RoomError) as e:
+        mgr.begin_expand(room, a, None)
+    assert e.value.code == "BAD_STATE"
+
+
+# --- Each player's own order ------------------------------------------------
+
+BIG_DECK = [card(f"r{i:02d}") for i in range(60)]
+
+
+def ids(cards: list[Card]) -> list[str]:
+    return [c.id for c in cards]
+
+
+def test_personal_order_same_cards_different_order() -> None:
+    mine = personal_order(BIG_DECK, [0], 7, "me")
+    yours = personal_order(BIG_DECK, [0], 7, "you")
+    assert sorted(ids(mine)) == sorted(ids(yours)) == ids(BIG_DECK)
+    assert ids(mine) != ids(yours)
+    assert ids(personal_order(BIG_DECK, [0], 7, "me")) == ids(mine)  # stable on reconnect
+
+
+def test_personal_order_keeps_good_cards_near_the_front() -> None:
+    for member in ("a", "b", "c", "d"):
+        order = ids(personal_order(BIG_DECK, [0], 7, member))
+        for i, c in enumerate(BIG_DECK):
+            assert abs(order.index(c.id) - i) <= SHUFFLE_WINDOW
+
+
+def test_personal_order_keeps_batches_in_order() -> None:
+    # 40 cards dealt at the start, 20 more from a "search farther"
+    order = ids(personal_order(BIG_DECK, [0, 40], 7, "me"))
+    assert sorted(order[:40]) == ids(BIG_DECK[:40])
+    assert sorted(order[40:]) == ids(BIG_DECK[40:])
+    # appending the batch didn't change the order of the cards before it
+    assert order[:40] == ids(personal_order(BIG_DECK[:40], [0], 7, "me"))
+
+
+def test_room_deals_each_member_their_own_order(mgr: RoomManager) -> None:
+    room, (a, b) = started(mgr, 2, deck=list(BIG_DECK))
+    assert ids(room.deck_for(a)) != ids(room.deck_for(b))
+    plan = mgr.begin_expand(room, a, None)
+    mgr.finish_expand(room, plan.radius_m, [card("x1"), card("x2"), card("x3")])
+    for member in (a, b):
+        assert sorted(ids(room.deck_for(member))[60:]) == ["x1", "x2", "x3"]
