@@ -5,7 +5,6 @@
   </picture>
 </p>
 
-# munch
 
 Tinder for food. Make a room, share the code, everyone swipes on nearby restaurants, and the
 first place everybody likes wins.
