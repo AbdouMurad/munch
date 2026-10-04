@@ -9,20 +9,19 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { SignedIn } from '@/account';
 import { Message } from '@/components/account-ui';
 import { ChunkyBox, ChunkyButton } from '@/components/ui';
-import { needsRegistering, useGoogleSignIn } from '@/google-signin';
+import { useGoogleSignIn } from '@/google-signin';
 import { useAppTheme } from '@/theme';
 
 export function SignInSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors } = useAppTheme();
   const [problem, setProblem] = useState('');
 
-  // Google said yes. Brand-new people still pick a name and handle on the sign-in screen.
-  function signedIn(result: SignedIn) {
+  // Google said yes. Brand-new people still pick a name and handle: FinishSigningUp
+  // (app/_layout.tsx) notices there's no handle yet and opens that step for us.
+  function signedIn() {
     onClose();
-    if (needsRegistering(result)) router.push('/signin?mode=register');
   }
 
   const google = useGoogleSignIn({ onSignedIn: signedIn, onError: setProblem });

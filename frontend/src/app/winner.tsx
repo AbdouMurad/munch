@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
-import { useRef, useState } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { ResultItem, ResultStack } from '@/components/result-stack';
@@ -35,13 +35,8 @@ export default function WinnerScreen() {
 
   return (
     <Screen>
-      {/* ---------- TOP: lobby code and "Leave" ---------- */}
-      <View>
-        <Text style={[styles.gameName, { color: colors.text }]}>Lobby {room.code}</Text>
-        <Pressable accessibilityRole="button" onPress={game.leaveRoom}>
-          <Text style={[styles.leave, { color: colors.softText }]}>Leave</Text>
-        </Pressable>
-      </View>
+      {/* ---------- TOP: lobby code ---------- */}
+      <Text style={[styles.gameName, { color: colors.text }]}>Lobby {room.code}</Text>
 
       {!top ? (
         // ---------- There is nothing to show ----------
@@ -92,21 +87,65 @@ export default function WinnerScreen() {
       {/* This empty box grows to push "Play again" to the bottom of the screen. */}
       <View style={styles.spacer} />
 
-      {/* ---------- BOTTOM: a big round "Play again" button ---------- */}
-      {/* Back to the lobby of THIS room, with the same friends, for another round. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Play again"
-        onPress={game.playAgain}
-        style={styles.again}>
-        {/* A plain circle with an outline (no shadow, so it reads as ONE button). */}
-        <View
-          style={[styles.againCircle, { backgroundColor: colors.primary, borderColor: colors.text }]}>
-          <Text style={[styles.againSymbol, { color: colors.onPrimary }]}>↻</Text>
-        </View>
-        <Text style={[styles.againText, { color: colors.text }]}>Play again</Text>
-      </Pressable>
+      {/* ---------- BOTTOM: two big round buttons, side by side ---------- */}
+      <View style={styles.roundButtons}>
+        {/* Leave this room and go back to the home screen. */}
+        <RoundButton
+          symbol={<HouseIcon color={colors.text} />}
+          label="Home"
+          onPress={game.leaveRoom}
+        />
+        {/* Back to the lobby of THIS room, with the same friends, for another round. */}
+        <RoundButton symbol="↻" label="Play again" primary onPress={game.playAgain} />
+      </View>
     </Screen>
+  );
+}
+
+// A big round button with its words underneath. A plain circle with an outline
+// (no shadow, so it reads as ONE button). "primary" = the filled, main-color one.
+// "symbol" is a character like "↻", or a drawn icon like <HouseIcon />.
+function RoundButton({ symbol, label, primary = false, onPress }: {
+  symbol: ReactNode;
+  label: string;
+  primary?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={styles.roundButton}>
+      <View
+        style={[
+          styles.circle,
+          { backgroundColor: primary ? colors.primary : colors.card, borderColor: colors.text },
+        ]}>
+        {typeof symbol === 'string' ? (
+          <Text style={[styles.symbol, { color: primary ? colors.onPrimary : colors.text }]}>
+            {symbol}
+          </Text>
+        ) : (
+          symbol
+        )}
+      </View>
+      <Text style={[styles.roundLabel, { color: colors.text }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// A little house, drawn with boxes instead of a "⌂" character: characters sit wherever
+// the phone's font puts them (often off-center), but boxes go exactly where we say.
+//   roof = a square turned on its corner with only two sides drawn, so it looks like "^"
+//   body = a box with no top side, sitting under the roof
+function HouseIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.house}>
+      <View style={[styles.roof, { borderColor: color }]} />
+      <View style={[styles.houseBody, { borderColor: color }]} />
+    </View>
   );
 }
 
@@ -140,21 +179,20 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
   },
-  leave: {
-    fontSize: 14,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
   spacer: {
     flex: 1,
   },
-  // The round button sits in the middle, with its words underneath.
-  again: {
-    alignSelf: 'center',
+  // The two round buttons, centered side by side.
+  roundButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 40,
+  },
+  roundButton: {
     alignItems: 'center',
     gap: 6,
   },
-  againCircle: {
+  circle: {
     width: 80,
     height: 80,
     borderRadius: 40, // half the size = a perfect circle
@@ -162,11 +200,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  againSymbol: {
+  symbol: {
     fontSize: 36,
     fontWeight: '900',
   },
-  againText: {
+  // The house icon: 32 wide, 30 tall, so it sits in the middle of the circle.
+  house: {
+    width: 32,
+    height: 30,
+  },
+  roof: {
+    position: 'absolute',
+    left: 5, // (32 - 22) / 2: centered left to right
+    top: 5, // turned on its corner, the tip pokes up to the top of the icon
+    width: 22,
+    height: 22,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    transform: [{ rotate: '45deg' }],
+  },
+  houseBody: {
+    position: 'absolute',
+    left: 6,
+    top: 15,
+    width: 20,
+    height: 15,
+    borderWidth: 4,
+    borderTopWidth: 0, // the roof is its top
+  },
+  roundLabel: {
     fontSize: 15,
     fontWeight: '800',
   },

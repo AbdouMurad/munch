@@ -42,6 +42,7 @@ ROOM_ERROR_STATUS: dict[ErrorCode, int] = {
     "UNAUTHORIZED": 401,
     "FORBIDDEN": 403,
     "HANDLE_TAKEN": 409,
+    "HANDLE_LOCKED": 409,
     "INVALID_CODE": 400,
     "RATE_LIMITED": 429,
     "UNAVAILABLE": 503,
@@ -149,7 +150,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings or get_settings()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[app.state.settings.web_origin],
+        allow_origins=app.state.settings.web_origin_list,
         allow_methods=["*"],
         allow_headers=["*"],
     )
