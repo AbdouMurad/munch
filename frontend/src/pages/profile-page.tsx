@@ -1,10 +1,11 @@
-import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Me, Preferences, useAccount } from '@/account';
 import { Chip, Field, Message } from '@/components/account-ui';
-import { BackButton, ChunkyButton, Screen } from '@/components/ui';
+import { ChunkyButton } from '@/components/ui';
+import { Page, SignInFirst } from '@/pages/page';
+import { useTabs } from '@/tabs';
 import { useAppTheme } from '@/theme';
 
 // The choices we offer. The words on the right are what Google calls each kind of place.
@@ -35,10 +36,11 @@ function flip<T>(list: T[], item: T) {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
 }
 
-// PROFILE SCREEN: your name and handle, what you like to eat, and links to friends.
-export default function ProfileScreen() {
+// PROFILE PAGE (swipe right from Play): your name and handle, and what you like to eat.
+export default function ProfilePage() {
   const { colors } = useAppTheme();
   const account = useAccount();
+  const tabs = useTabs();
   const me = account.me;
 
   const [name, setName] = useState(me?.displayName ?? '');
@@ -55,8 +57,14 @@ export default function ProfileScreen() {
       .catch((e: Error) => setMessage({ text: e.message, problem: true }));
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!account.ready) return null;
-  if (!me) return <Redirect href="/signin" />;
+  if (!account.ready) return <Page title="Profile">{null}</Page>;
+  if (!me) {
+    return (
+      <Page title="Profile">
+        <SignInFirst why="Sign in to save what you like to eat, so every game deals you better spots." />
+      </Page>
+    );
+  }
 
   async function save() {
     if (!prefs) return;
@@ -76,17 +84,11 @@ export default function ProfileScreen() {
   }
 
   async function signOut() {
-    await account.signOut();
-    router.dismissTo('/');
+    await account.signOut(); // this page then shows "Sign in" again
   }
 
   return (
-    <Screen>
-      <View style={styles.topBar}>
-        <BackButton onPress={() => router.back()} />
-        <Text style={[styles.topTitle, { color: colors.text }]}>Your profile</Text>
-      </View>
-
+    <Page title="Profile">
       {!me.handle && (
         <Message text="Pick a handle so friends can find you." problem={false} />
       )}
@@ -174,9 +176,9 @@ export default function ProfileScreen() {
 
       <Message text={message.text} problem={message.problem} />
       <ChunkyButton label="Save" primary onPress={save} />
-      <ChunkyButton label="Friends" onPress={() => router.push('/friends')} />
+      <ChunkyButton label="Friends" onPress={() => tabs.setTab('friends')} />
       <ChunkyButton label="Sign out" onPress={signOut} />
-    </Screen>
+    </Page>
   );
 }
 
@@ -192,15 +194,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  topTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
   section: {
     gap: 8,
   },

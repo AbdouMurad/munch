@@ -120,7 +120,13 @@ async def record(conn: asyncpg.Connection, m: Migration, *, baselined: bool) -> 
 
 async def run(dsn: str, *, status: bool, baseline: int | None) -> None:
     migrations = discover()
-    conn = await asyncpg.connect(dsn)
+    try:
+        conn = await asyncpg.connect(dsn)
+    except (OSError, asyncpg.PostgresError) as e:
+        raise MigrationError(
+            f"could not connect to the database (nothing was changed): {e}. "
+            "Check DATABASE_URL in the repo-root .env (user, password, host, port)."
+        ) from e
     try:
         await conn.execute(CREATE_TABLE)
         await conn.execute("SELECT pg_advisory_lock($1)", LOCK_KEY)
