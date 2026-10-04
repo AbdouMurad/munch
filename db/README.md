@@ -9,6 +9,7 @@ the `schema_migrations` table.
 | `001_init.sql` | `restaurants` (filled by the crawl) |
 | `002_rooms_swipe_events.sql` | `rooms`, `room_members`, the `swipe_events` hypertable, the daily popularity aggregate |
 | `003_accounts.sql` | `users`, sign-in (`auth_identities`, `sessions`, `email_login_codes`), `user_preferences`, `friendships`, `blocks`, per-user `swipes` |
+| `004_room_invites.sql` | `room_invites` (friends inviting friends to a lobby) |
 
 ## Setup
 

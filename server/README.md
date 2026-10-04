@@ -14,6 +14,7 @@ Architecture and contracts: [`docs/DESIGN.md`](../docs/DESIGN.md).
    | `DATABASE_URL` | Real restaurants, ranking, migrations. Leave empty to run with fixture data |
    | `GOOGLE_PLACES_API_KEY` | The crawl and the photo proxy only |
    | `WEB_ORIGIN` | CORS. `http://localhost:8081` for Expo web |
+   | `GOOGLE_CLIENT_IDS` | Google sign-in: your OAuth client ids, comma-separated |
 
 ## Run
 
@@ -42,6 +43,14 @@ uv run mypy munch tests  # types (strict)
 
 All four must pass. Pure logic (matching, scoring, grid maths) gets a test.
 
+The account tests (`tests/test_accounts_db.py`) need a Postgres they can create a throwaway
+`munch_test` database on, and are skipped otherwise. **Never point this at the shared Tiger
+DB.** A local Postgres works, e.g. `brew install postgresql@16`, then:
+
+```bash
+MUNCH_TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest
+```
+
 ## Other commands
 
 | Command | What it does | Docs |
@@ -57,8 +66,9 @@ All four must pass. Pure logic (matching, scoring, grid maths) gets a test.
 | `munch/models.py` | **The contract**: every REST body and WebSocket message. Change it only together with DESIGN.md §5 |
 | `munch/main.py` | App setup, error handling, `/api/health` |
 | `munch/config.py` | Settings from `.env` (timeouts, ranking weights) |
-| `munch/routes/` | REST endpoints (`/api/rooms`) |
-| `munch/realtime/` | `/ws/{code}` WebSocket, broadcasting, cleanup sweeper |
+| `munch/routes/` | REST endpoints (`/api/rooms`, `/auth`, `/me`, `/friends`, invites) |
+| `munch/accounts/` | Sign-in (Google, email codes), sessions, friends, invites, all account SQL |
+| `munch/realtime/` | `/ws/{code}` room socket, `/ws/me` per-user socket, broadcasting, sweeper |
 | `munch/rooms/` | In-memory rooms and match logic, fixture deck |
 | `munch/ranking/` | Candidate query and scoring |
 | `munch/ingest/` | Google Places crawler |

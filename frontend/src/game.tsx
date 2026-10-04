@@ -11,12 +11,9 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useRef, useState } from 'react';
 
-// Where the server lives. On a real phone "localhost" means the PHONE, so set
-// EXPO_PUBLIC_SERVER_URL to your computer's address, like http://192.168.1.5:8000
-const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL ?? 'http://localhost:8000';
+import { useAccount } from '@/account';
+import { SERVER_URL, SOCKET_URL } from '@/server';
 
-// Sockets use "ws" instead of "http" (and "wss" instead of "https").
-const SOCKET_URL = SERVER_URL.replace('http', 'ws');
 
 // We don't ask for the phone's location yet, so every room is in downtown Vancouver.
 // TODO: use the phone's real location
@@ -31,6 +28,7 @@ export type Member = {
   displayName: string;
   isHost: boolean;
   progress: number; // how many cards they have swiped
+  userId: string | null; // their account, if they signed in (null = guest)
 };
 
 // One restaurant card.
@@ -75,7 +73,7 @@ export type Room = {
 };
 
 // Our ticket into the room. The server gives us this when we create or join.
-type Session = {
+export type Session = {
   code: string;
   memberId: string; // who we are
   memberToken: string; // a secret that proves it's really us
@@ -111,6 +109,7 @@ type Game = {
   error: string; // a problem to show the person ('' = no problem)
   createRoom: (name: string, radiusM: number, filters: Filters) => void;
   joinRoom: (code: string, name: string) => void;
+  enterWithSession: (session: Session) => void; // e.g. after accepting a friend's invite
   startGame: () => void;
   swipe: (card: Card, liked: boolean) => void;
   leaveRoom: () => void;
@@ -136,6 +135,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
 
+  // If we're signed in, rooms we make or join are linked to our account.
+  const account = useAccount();
+
   // The open socket. A "ref" is a box that remembers one thing
   // without redrawing the screen when it changes.
   const socketRef = useRef<WebSocket | null>(null);
@@ -155,7 +157,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch(SERVER_URL + path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(account.token ? { Authorization: `Bearer ${account.token}` } : {}),
+        },
         body: JSON.stringify({ displayName: name, ...extras }),
       });
       const data = await response.json();
@@ -185,6 +190,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   function joinRoom(code: string, name: string) {
     enterRoom(`/api/rooms/${code}/join`, name, {});
+  }
+
+  function enterWithSession(session: Session) {
+    setError('');
+    setMyId(session.memberId);
+    openSocket(session);
   }
 
   // ---------- Talking to the server: the SOCKET ----------
@@ -315,6 +326,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         error,
         createRoom,
         joinRoom,
+        enterWithSession,
         startGame,
         swipe,
         leaveRoom,
