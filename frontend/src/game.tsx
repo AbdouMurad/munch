@@ -127,6 +127,7 @@ type Game = {
   result: Result | null; // null = the game isn't over yet
   error: string; // a problem to show the person ('' = no problem)
   loadingCards: boolean; // true while we download the first photos, right after Start
+  connecting: boolean; // true from pressing Create/Join until the lobby opens
   createRoom: (name: string, radiusM: number, filters: Filters) => void;
   joinRoom: (code: string, name: string) => void;
   enterWithSession: (session: Session) => void; // e.g. after accepting a friend's invite
@@ -155,6 +156,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
   const [loadingCards, setLoadingCards] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   // True once the server has told us how the game ended.
   // (A "ref" is a box that remembers one thing without redrawing the screen.)
@@ -179,6 +181,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     setError('');
+    // We're on our way! Screens show the loading taxi while this is true.
+    // (This can take a while if the server was asleep and has to wake up.)
+    setConnecting(true);
     try {
       const response = await fetch(SERVER_URL + path, {
         method: 'POST',
@@ -193,6 +198,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // The server said no (wrong code, game already started, ...).
       if (!response.ok) {
         setError(data.error.message);
+        setConnecting(false);
         return;
       }
 
@@ -202,6 +208,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } catch {
       // We couldn't even reach the server.
       setError('Could not reach the server. Is it running?');
+      setConnecting(false);
     }
   }
 
@@ -253,6 +260,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setRoom(payload);
         if (waitingForFirstMessage) {
           waitingForFirstMessage = false;
+          setConnecting(false); // we made it: stop the loading taxi
           router.push('/lobby');
         }
       }
@@ -303,7 +311,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     // This runs if the phone call drops.
     // TODO: try to call back automatically instead of just showing a message
-    socket.onclose = () => setError('Lost the connection to the server.');
+    socket.onclose = () => {
+      setError('Lost the connection to the server.');
+      setConnecting(false);
+    };
   }
 
   // The game just started and we have the cards. Before showing the swipe
@@ -372,6 +383,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         result,
         error,
         loadingCards,
+        connecting,
         createRoom,
         joinRoom,
         enterWithSession,

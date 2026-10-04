@@ -33,7 +33,13 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Munch uses your city to show your local logo."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

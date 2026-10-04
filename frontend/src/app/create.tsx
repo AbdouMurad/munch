@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BackButton, ChunkyBox, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
+import { TaxiLoading } from '@/city';
 import { useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -166,17 +167,23 @@ export default function CreateScreen() {
       {/* Ask the server to make the room. If it works, we land in the lobby.
           The server remembers these rules and uses them to build the deck
           of restaurants when the game starts. */}
-      <ChunkyButton
-        label="Create lobby"
-        primary
-        onPress={() =>
-          game.createRoom(name, distance, {
-            priceLevels: prices,
-            minRating: minRating,
-            openNow: openNow,
-          })
-        }
-      />
+      {game.connecting ? (
+        // We asked the server and are waiting for it to answer.
+        // Show the taxi so people know something is happening.
+        <TaxiLoading label="Opening your lobby..." />
+      ) : (
+        <ChunkyButton
+          label="Create lobby"
+          primary
+          onPress={() =>
+            game.createRoom(name, distance, {
+              priceLevels: prices,
+              minRating: minRating,
+              openNow: openNow,
+            })
+          }
+        />
+      )}
     </Screen>
   );
 }

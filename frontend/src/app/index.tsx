@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account';
+import { Logo, Taxi, useCity } from '@/city';
 import { InvitesInbox } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { useAppTheme } from '@/theme';
@@ -13,13 +14,19 @@ export default function HomeScreen() {
   // Grab our colors, and the switch that flips light/dark mode.
   const { colors, isDark, toggleDark } = useAppTheme();
   const account = useAccount();
+  // Which special city we're in (Vancouver, Toronto, Edmonton), or null for none.
+  const city = useCity();
 
   return (
     // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       {/* ---------- TOP: the app name and the light/dark button ---------- */}
       <View style={styles.topBar}>
-        <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
+        {/* The logo. In Vancouver, Toronto or Edmonton it's that city's special
+            logo; anywhere else it's just the word "munch" (see city.tsx). */}
+        <View style={styles.appName}>
+          <Logo />
+        </View>
         {/* Signed in? Go to your profile. Not yet? Sign in. */}
         <Pressable
           accessibilityRole="button"
@@ -63,11 +70,16 @@ export default function HomeScreen() {
               styles.frontCard,
               { backgroundColor: colors.card, borderColor: colors.text },
             ]}>
-            {/* A ring (a circle with just a colored edge)... */}
-            <View style={[styles.ring, { borderColor: colors.accent }]}>
-              {/* ...with a dot inside it. */}
-              <View style={[styles.dot, { backgroundColor: colors.dot }]} />
-            </View>
+            {city ? (
+              // In a special city: that city's taxi drives across the card.
+              <Taxi width={176} />
+            ) : (
+              // Anywhere else: the bullseye. A ring (a circle with just a colored edge)...
+              <View style={[styles.ring, { borderColor: colors.accent }]}>
+                {/* ...with a dot inside it. */}
+                <View style={[styles.dot, { backgroundColor: colors.dot }]} />
+              </View>
+            )}
           </View>
 
           {/* Box 3: the "OH YES" sticker in the top-right corner */}
@@ -121,8 +133,7 @@ const styles = StyleSheet.create({
   },
   appName: {
     flex: 1, // pushes the buttons to the right
-    fontSize: 22,
-    fontWeight: '900',
+    alignItems: 'flex-start', // keep the logo on the left, at its own size
   },
   themeButton: {
     borderWidth: 2,
