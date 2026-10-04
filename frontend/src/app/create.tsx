@@ -4,6 +4,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BackButton, ChunkyBox, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
 import { TaxiLoading } from '@/city';
+import { useAccount } from '@/account';
+import { PlayingAs } from '@/components/account-ui';
 import { useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
@@ -49,12 +51,14 @@ function Chip({ label, selected, onPress }: {
   );
 }
 
-// CREATE SCREEN: the host types a name, picks the settings, and makes a room.
+// CREATE SCREEN: the host types a name (unless signed in), picks the settings,
+// and makes a room.
 // The settings are picked HERE (not in the lobby) because the server
 // needs them at the moment the room is created.
 export default function CreateScreen() {
   const { colors } = useAppTheme();
   const game = useGame();
+  const account = useAccount();
 
   const [name, setName] = useState('');
   const [distance, setDistance] = useState(3000);
@@ -86,21 +90,25 @@ export default function CreateScreen() {
         </Text>
       </View>
 
-      {/* ---------- Your name ---------- */}
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: colors.text }]}>Your name</Text>
-        <TextInput
-          style={[
-            styles.nameInput,
-            { backgroundColor: colors.card, borderColor: colors.text, color: colors.text },
-          ]}
-          value={name}
-          onChangeText={setName}
-          placeholder="James"
-          placeholderTextColor={colors.softText}
-          maxLength={24} // the server's limit for names
-        />
-      </View>
+      {/* ---------- Your name (signed in? we already know it) ---------- */}
+      {account.me ? (
+        <PlayingAs />
+      ) : (
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.text }]}>Your name</Text>
+          <TextInput
+            style={[
+              styles.nameInput,
+              { backgroundColor: colors.card, borderColor: colors.text, color: colors.text },
+            ]}
+            value={name}
+            onChangeText={setName}
+            placeholder="James"
+            placeholderTextColor={colors.softText}
+            maxLength={24} // the server's limit for names
+          />
+        </View>
+      )}
 
       {/* ---------- Game settings ---------- */}
       <ChunkyBox background={colors.card} style={styles.settings}>
@@ -176,7 +184,8 @@ export default function CreateScreen() {
           label="Create lobby"
           primary
           onPress={() =>
-            game.createRoom(name, distance, {
+            // Signed in? Play under your account name. Otherwise, the name typed above.
+            game.createRoom(account.me?.displayName ?? name, distance, {
               priceLevels: prices,
               minRating: minRating,
               openNow: openNow,

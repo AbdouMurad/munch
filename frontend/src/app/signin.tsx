@@ -1,65 +1,70 @@
-import * as AuthSession from 'expo-auth-session';
-import * as Crypto from 'expo-crypto';
-import { router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { useAccount } from '@/account';
-import { useTabs } from '@/tabs';
+import { Me, SignedIn, tidyHandle, useAccount } from '@/account';
 import { Field, Message } from '@/components/account-ui';
 import { BackButton, ChunkyButton, Screen } from '@/components/ui';
+import { needsRegistering } from '@/google-signin';
+import { useTabs } from '@/tabs';
 import { useAppTheme } from '@/theme';
 
-// On the web, Google opens a popup. This closes it once Google sends us back.
-WebBrowser.maybeCompleteAuthSession();
+// What the screen is for. The sign-in pop-up picks one:
+//   signin   = "Sign in with email" (an account you already have)
+//   create   = "Create account" with your email
+//   register = you just signed in with Google and need a name and handle
+type Mode = 'signin' | 'create' | 'register';
 
-// The "Web application" OAuth client id from Google Cloud Console.
-// Google sign-in in a phone app needs a development build (see frontend/README.md),
-// so for now the Google button only shows on the web.
-const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-const GOOGLE = { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' };
-
-// SIGN IN SCREEN: type your email, get a 6-digit code, type it in. Or use Google.
+// SIGN IN SCREEN, in up to three steps:
+//   1. type your email (Google lives in the sign-in pop-up, not here)
+//   2. type the 6-digit code we sent
+//   3. new here? register: pick the name and handle friends will see
+// Either way the same email code works: an email we know signs you in, a new one
+// makes a new account. The words just match what you picked in the pop-up.
 export default function SignInScreen() {
   const { colors } = useAppTheme();
   const account = useAccount();
   const tabs = useTabs();
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const mode: Mode =
+    params.mode === 'create' || params.mode === 'register' ? params.mode : 'signin';
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false); // step 2: typing the code
+  // Step 3: name and handle. Coming from Google in the pop-up? Start right here.
+  const [registering, setRegistering] = useState(mode === 'register' && account.me !== null);
+  const [name, setName] = useState(account.me?.displayName ?? '');
+  const [handle, setHandle] = useState(account.me?.handle ?? '');
   const [problem, setProblem] = useState('');
-  const [nonce] = useState(() => Crypto.randomUUID()); // one per screen, not per redraw
 
-  // Ask Google for an "ID token": a signed note from Google saying who you are.
-  // The server checks Google's signature, so we can't fake it.
-  const [, googleResponse, askGoogle] = AuthSession.useAuthRequest(
-    {
-      clientId: GOOGLE_WEB_CLIENT_ID ?? 'not-set',
-      redirectUri: AuthSession.makeRedirectUri(),
-      responseType: AuthSession.ResponseType.IdToken,
-      scopes: ['openid', 'email', 'profile'],
-      usePKCE: false,
-      extraParams: { nonce },
-    },
-    GOOGLE,
-  );
-
-  // Signed in! New people land on their profile to pick a handle.
-  function done(isNew: boolean) {
-    if (isNew) tabs.setTab('profile');
+  // Signed in! Anyone without a handle yet (new accounts) registers first.
+  function signedIn(result: SignedIn) {
+    if (needsRegistering(result)) {
+      setName(result.user.displayName); // from Google, or the start of your email
+      setHandle(result.user.handle ?? '');
+      setRegistering(true);
+      return;
+    }
     router.back();
   }
 
-  useEffect(() => {
-    if (googleResponse?.type !== 'success') return;
-    const idToken = googleResponse.params.id_token;
-    account
-      .googleSignIn(idToken)
-      .then(done)
-      .catch((e: Error) => setProblem(e.message));
-  }, [googleResponse]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Step 3: save the name and handle, then go to your new profile.
+  async function register() {
+    setProblem('');
+    if (!name.trim()) return setProblem('Please type your name.');
+    if (handle.length < 3) return setProblem('Handles need at least 3 letters, numbers or _.');
+    try {
+      account.setMe(
+        await account.api<Me>('/api/me', 'PATCH', { displayName: name.trim(), handle }),
+      );
+      tabs.setTab('profile');
+      router.back();
+    } catch (e) {
+      setProblem((e as Error).message); // e.g. "@sam is taken"
+    }
+  }
+
 
   async function sendCode() {
     setProblem('');
@@ -74,24 +79,68 @@ export default function SignInScreen() {
   async function checkCode() {
     setProblem('');
     try {
-      done(await account.emailVerify(email.trim(), code.trim()));
+      signedIn(await account.emailVerify(email.trim(), code.trim()));
     } catch (e) {
       setProblem((e as Error).message);
     }
+  }
+
+  if (registering) {
+    return (
+      <Screen>
+        <View style={styles.topBar}>
+          <BackButton onPress={() => router.back()} />
+          <Text style={[styles.topTitle, { color: colors.text }]}>Create account</Text>
+        </View>
+
+        <View>
+          <Text style={[styles.title, { color: colors.text }]}>Almost done!</Text>
+          <Text style={[styles.subtitle, { color: colors.softText }]}>
+            This is how friends will see you, and how they can find you.
+          </Text>
+        </View>
+
+        <Field
+          label="Name"
+          value={name}
+          onChangeText={setName}
+          placeholder="Sam Lee"
+          maxLength={24}
+          autoComplete="name"
+        />
+        <Field
+          label="Handle"
+          value={handle}
+          onChangeText={(typed) => setHandle(tidyHandle(typed))}
+          placeholder="sam_eats"
+          autoCapitalize="none"
+          maxLength={20}
+        />
+        <Message text="3 to 20 letters, numbers or _. Friends add you with @handle." problem={false} />
+
+        <ChunkyButton label="Create account" primary onPress={register} />
+        <Message text={problem} />
+      </Screen>
+    );
   }
 
   return (
     <Screen>
       <View style={styles.topBar}>
         <BackButton onPress={() => router.back()} />
-        <Text style={[styles.topTitle, { color: colors.text }]}>Sign in</Text>
+        <Text style={[styles.topTitle, { color: colors.text }]}>
+          {mode === 'create' ? 'Create account' : 'Sign in'}
+        </Text>
       </View>
 
       <View>
-        <Text style={[styles.title, { color: colors.text }]}>Save your taste</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {mode === 'create' ? 'Create your account' : 'Welcome back'}
+        </Text>
         <Text style={[styles.subtitle, { color: colors.softText }]}>
-          Sign in to keep your preferences, add friends, and get invited to their games. No
-          password needed.
+          {mode === 'create'
+            ? "Save your taste, add friends, and get invited to their games. We'll email you a code, no password needed."
+            : "Type your email and we'll send you a code. No password needed."}
         </Text>
       </View>
 
@@ -106,7 +155,11 @@ export default function SignInScreen() {
             autoCapitalize="none"
             autoComplete="email"
           />
-          <ChunkyButton label="Email me a code" primary onPress={sendCode} />
+          <ChunkyButton
+            label={mode === 'create' ? 'Create account' : 'Email me a code'}
+            primary
+            onPress={sendCode}
+          />
         </>
       ) : (
         <>
@@ -123,14 +176,15 @@ export default function SignInScreen() {
             text="For now the code is printed in the server's terminal."
             problem={false}
           />
-          <ChunkyButton label="Sign in" primary onPress={checkCode} />
+          <ChunkyButton
+            label={mode === 'create' ? 'Verify' : 'Sign in'}
+            primary
+            onPress={checkCode}
+          />
           <ChunkyButton label="Use a different email" onPress={() => setCodeSent(false)} />
         </>
       )}
 
-      {Platform.OS === 'web' && GOOGLE_WEB_CLIENT_ID ? (
-        <ChunkyButton label="Continue with Google" onPress={() => askGoogle()} />
-      ) : null}
 
       <Message text={problem} />
     </Screen>

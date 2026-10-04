@@ -5,15 +5,18 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BackButton, ChunkyBox, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
 import { TaxiLoading } from '@/city';
 import { useGame } from '@/game';
+import { useAccount } from '@/account';
+import { PlayingAs } from '@/components/account-ui';
 import { useAppTheme } from '@/theme';
 
 // How many letters are in a lobby code. The server makes codes this long.
 const CODE_LENGTH = 6;
 
-// JOIN SCREEN: type the lobby code and your name, then join your friends.
+// JOIN SCREEN: type the lobby code and your name (unless signed in), then join your friends.
 export default function JoinScreen() {
   const { colors } = useAppTheme();
   const game = useGame();
+  const account = useAccount();
 
   // Did we get here by tapping an invite link? Then the link has a sticky note
   // on it, like "?code=ABC234", and this reads it. No link = no code (undefined).
@@ -71,7 +74,9 @@ export default function JoinScreen() {
         </Text>
         <Text style={[styles.subtitle, { color: colors.softText }]}>
           {cameFromLink
-            ? 'We filled in the code for you. Just add your name.'
+            ? account.me
+              ? 'We filled in the code for you. Just tap Join.'
+              : 'We filled in the code for you. Just add your name.'
             : `Ask the host for the ${CODE_LENGTH}-character lobby code.`}
         </Text>
       </View>
@@ -130,24 +135,28 @@ export default function JoinScreen() {
         </Pressable>
       </View>
 
-      {/* ---------- Your name ---------- */}
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: colors.text }]}>Your name</Text>
-        <TextInput
-          style={[
-            styles.nameInput,
-            { backgroundColor: colors.card, borderColor: colors.text, color: colors.text },
-          ]}
-          value={name}
-          onChangeText={setName}
-          placeholder="James"
-          placeholderTextColor={colors.softText}
-          // Came from a link? The name is the only thing left to type, so
-          // open the keyboard right away on this box.
-          autoFocus={cameFromLink}
-          maxLength={24} // the server's limit for names
-        />
-      </View>
+      {/* ---------- Your name (signed in? we already know it) ---------- */}
+      {account.me ? (
+        <PlayingAs />
+      ) : (
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.text }]}>Your name</Text>
+          <TextInput
+            style={[
+              styles.nameInput,
+              { backgroundColor: colors.card, borderColor: colors.text, color: colors.text },
+            ]}
+            value={name}
+            onChangeText={setName}
+            placeholder="James"
+            placeholderTextColor={colors.softText}
+            // Came from a link? The name is the only thing left to type, so
+            // open the keyboard right away on this box.
+            autoFocus={cameFromLink}
+            maxLength={24} // the server's limit for names
+          />
+        </View>
+      )}
 
       {/* ---------- A friendly tip (only if you typed the code yourself) ---------- */}
       {!cameFromLink && (
@@ -169,7 +178,7 @@ export default function JoinScreen() {
         // Show the taxi so people know something is happening.
         <TaxiLoading label="Finding your friends..." />
       ) : (
-        <ChunkyButton label="Join lobby" primary onPress={() => game.joinRoom(code, name)} />
+        <ChunkyButton label="Join lobby" primary onPress={() => game.joinRoom(code, account.me?.displayName ?? name)} />
       )}
     </Screen>
   );
