@@ -10,11 +10,10 @@ circles over a bounding box. Run it **once** into the shared Tiger DB; teammates
    GOOGLE_PLACES_API_KEY=...
    DATABASE_URL=postgres://tsdbadmin:PASSWORD@HOST:PORT/tsdb?sslmode=require
    ```
-2. **Schema is applied** (once):
+2. **Schema is applied** (from `server/`; see [`db/README.md`](../../../db/README.md)):
    ```bash
-   cd /home/abd/munch && set -a && source .env && set +a
-   psql "$DATABASE_URL" -f db/migrations/001_init.sql
-   psql "$DATABASE_URL" -c "\d restaurants"
+   uv run python -m munch.db.migrate --status
+   uv run python -m munch.db.migrate
    ```
 3. **Check the price.** Every call is billed at the Nearby Search *Enterprise* tier (rating,
    review count, price level and hours are in the field mask). Look up the current price per

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Redirect, router } from 'expo-router';
 import { ReactNode, useEffect, useState } from 'react';
 import {
@@ -12,7 +13,15 @@ import {
 } from 'react-native';
 
 import { Avatar, ChunkyBox, ErrorLine, Eye, Screen } from '@/components/ui';
-import { Card, describe, initials, useGame } from '@/game';
+import {
+  Card,
+  describe,
+  initials,
+  photoAddress,
+  PRELOAD_AHEAD,
+  preloadPhotos,
+  useGame,
+} from '@/game';
 import { useAppTheme } from '@/theme';
 
 // One of the round buttons under the card (nope, yes).
@@ -71,21 +80,33 @@ function fadeTo(direction: 'left' | 'right', color: string) {
 // like real cards somebody stacked in a hurry.
 // The tilt LOOKS random, but it is worked out from the card's place in the deck,
 // so the same card always gets the same tilt and never wobbles when the screen redraws.
+function messyDegrees(placeInDeck: number) {
+  return ((placeInDeck * 37) % 7) - 3; // always a number from -3 to 3
+}
 function messyTilt(placeInDeck: number) {
-  const degrees = ((placeInDeck * 37) % 7) - 3; // always a number from -3 to 3
-  return { rotate: `${degrees}deg` };
+  return { rotate: `${messyDegrees(placeInDeck)}deg` };
 }
 
 // One printed restaurant card: a photo on top, the name and details underneath.
 // "children" is anything extra to draw on top of the card (we use it for the glow).
 function RestaurantCard({ card, children }: { card: Card; children?: ReactNode }) {
   const { colors } = useAppTheme();
+  const photo = photoAddress(card);
   return (
     <ChunkyBox background={colors.card} radius={20}>
-      {/* Top half: the restaurant photo (our eye mascot for now).
-          TODO: show the real photo once the server sends photoUrl */}
+      {/* Top half: the restaurant photo. The eye mascot sits underneath,
+          so it shows while the photo loads, or if there is no photo. */}
       <View style={[styles.photo, { backgroundColor: colors.soft }]}>
         <Eye size={160} />
+        {photo && (
+          <Image
+            source={photo}
+            style={styles.photoImage}
+            contentFit="cover" // fill the box, cropping the edges if needed
+            transition={150} // fade in instead of popping in
+            accessibilityLabel={`Photo of ${card.name}`}
+          />
+        )}
       </View>
 
       {/* Bottom half: the name and details. Every card is the SAME height, so
@@ -133,6 +154,20 @@ export default function SwipeScreen() {
   // It's an "Animated" number, so things that follow it move smoothly.
   // Each new top card gets its OWN fresh dragX (see flyAway below).
   const [dragX, setDragX] = useState(() => new Animated.Value(0));
+
+  // When a card becomes the top card, it straightens out (its crooked tilt
+  // springs back to 0). 0 = still crooked like in the pile, 1 = perfectly straight.
+  // Each new top card gets a fresh one that starts at 0 (see answer below).
+  const [straighten, setStraighten] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    Animated.spring(straighten, { toValue: 1, friction: 7, useNativeDriver: false }).start();
+  }, [straighten]);
+
+  // Keep the next few photos downloading, so they're ready before their cards
+  // show up (this also gets the NEXT hand's photos ready before it falls in).
+  useEffect(() => {
+    preloadPhotos(game.deck.slice(cardNumber + 1, cardNumber + 1 + PRELOAD_AHEAD));
+  }, [cardNumber, game.deck]);
 
   // A "hand" is the little pile of (up to) 10 cards you are working through.
   // handStart = the place in the deck where this hand begins.
@@ -187,6 +222,7 @@ export default function SwipeScreen() {
     }
 
     setCardNumber(nextCard);
+    setStraighten(new Animated.Value(0)); // the new top card starts crooked, then straightens
 
     // Was that the last card in this hand? Then deal a new hand that starts
     // at the next card. New "falls" make the new cards drop in from the sky.
@@ -344,7 +380,12 @@ export default function SwipeScreen() {
                           { translateY: fallY },
                           { translateX: dragX },
                           { rotate: tilt },
-                          messyTilt(place),
+                          {
+                            rotate: straighten.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [`${messyDegrees(place)}deg`, '0deg'],
+                            }),
+                          },
                         ]
                       : // ...the cards underneath just fall in and sit there, a bit crooked.
                         [{ translateY: fallY }, messyTilt(place)],
@@ -358,7 +399,6 @@ export default function SwipeScreen() {
                           nothing (left side) to green (right side). It is invisible
                           until you drag right, because its opacity follows yesGlow. */}
                       <Animated.View
-                        pointerEvents="none" // touches go straight through it to the card
                         style={[styles.glow, fadeTo('right', colors.yes), { opacity: yesGlow }]}>
                         <View
                           style={[styles.sticker, styles.yesSticker, { borderColor: colors.card }]}>
@@ -368,7 +408,6 @@ export default function SwipeScreen() {
 
                       {/* The RED glow: the mirror image, for dragging left. */}
                       <Animated.View
-                        pointerEvents="none"
                         style={[styles.glow, fadeTo('left', colors.nope), { opacity: nopeGlow }]}>
                         <View
                           style={[styles.sticker, styles.nopeSticker, { borderColor: colors.card }]}>
@@ -456,11 +495,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    pointerEvents: 'none', // touches go straight through it to the card
   },
   photo: {
     height: 220,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The picture covers the whole photo box, on top of the mascot.
+  photoImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   sticker: {
     position: 'absolute', // pinned near the top of the card

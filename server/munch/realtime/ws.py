@@ -7,6 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from munch.accounts import repo
+from munch.background import spawn
 from munch.models import (
     ClientMessage,
     ErrorBody,
@@ -102,6 +104,11 @@ async def handle(
         case SwipeMessage(payload=p):
             result = rooms.swipe(room, member.id, p.restaurant_id, p.liked)
             if result is not None:
+                if member.user_id is not None and state.db_pool is not None:
+                    spawn(
+                        repo.record_swipe(state.db_pool, member.user_id, p.restaurant_id, p.liked),
+                        "record swipe",
+                    )
                 progress = MemberProgressPayload(member_id=member.id, progress=result.progress)
                 await hub.broadcast(room, MemberProgressMessage(payload=progress))
                 if result.outcome is not None:
@@ -130,6 +137,8 @@ async def start_room(state: AppState, room: LiveRoom, member: LiveMember) -> Non
         raise RoomError("INTERNAL", "Couldn't build a deck, try again") from e
 
     outcome = rooms.finish_start(room, deck)
+    if state.db_pool is not None:  # invites to this room can't be used any more
+        spawn(repo.expire_room_invites(state.db_pool, room.id), "expire invites")
     if room.status == "closed":  # everyone left while the deck was building
         return
     await hub.broadcast(room, RoomStateMessage(payload=room.to_state()))

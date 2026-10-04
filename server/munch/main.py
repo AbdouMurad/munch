@@ -6,20 +6,29 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import asyncpg
+import httpx
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from munch.accounts.errors import AccountError
+from munch.accounts.google import GoogleVerifier
 from munch.config import Settings, get_settings
 from munch.models import ErrorBody, ErrorCode, ErrorResponse, HealthResponse
+from munch.photos.service import PhotoService, with_photo_warmup
 from munch.ranking.deck import make_deck_builder
-from munch.realtime import ws
+from munch.realtime import user_ws, ws
 from munch.realtime.hub import Hub
 from munch.realtime.sweeper import run_sweeper
 from munch.rooms.fixture_deck import DeckBuilder, build_fixture_deck
 from munch.rooms.manager import RoomError, RoomManager
+from munch.routes import auth as auth_routes
+from munch.routes import friends as friends_routes
+from munch.routes import invites as invites_routes
+from munch.routes import me as me_routes
+from munch.routes import photos as photos_routes
 from munch.routes import rooms as rooms_routes
 from munch.state import AppState
 
@@ -30,6 +39,11 @@ ROOM_ERROR_STATUS: dict[ErrorCode, int] = {
     "BAD_STATE": 409,
     "NOT_HOST": 403,
     "UNAUTHORIZED": 401,
+    "FORBIDDEN": 403,
+    "HANDLE_TAKEN": 409,
+    "INVALID_CODE": 400,
+    "RATE_LIMITED": 429,
+    "UNAVAILABLE": 503,
 }
 
 
@@ -53,8 +67,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         build_deck = make_deck_builder(db_pool, settings)
     else:
         log.warning("DATABASE_URL not set: running without a DB (fixture deck, no /stats)")
+    http = httpx.AsyncClient(timeout=10)
+    photos = None
+    if db_pool is not None and settings.google_places_api_key:
+        photos = PhotoService(db_pool, http, settings.google_places_api_key)
+        build_deck = with_photo_warmup(build_deck, photos)
+    else:
+        log.warning("Photos off: need DATABASE_URL and GOOGLE_PLACES_API_KEY")
     state = AppState(
-        settings=settings, rooms=rooms, hub=Hub(), build_deck=build_deck, db_pool=db_pool
+        settings=settings,
+        rooms=rooms,
+        hub=Hub(),
+        build_deck=build_deck,
+        db_pool=db_pool,
+        user_hub=Hub(),
+        google=GoogleVerifier(settings.google_client_id_list),
+        photos=photos,
     )
     app.state.munch = state
     sweeper = asyncio.create_task(run_sweeper(rooms, state.hub))
@@ -62,6 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         sweeper.cancel()
+        await http.aclose()
         if db_pool is not None:
             await db_pool.close()
 
@@ -69,6 +98,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RoomError)
     async def room_error(_: Request, exc: RoomError) -> JSONResponse:
+        return error_response(ROOM_ERROR_STATUS.get(exc.code, 400), exc.code, exc.message)
+
+    @app.exception_handler(AccountError)
+    async def account_error(_: Request, exc: AccountError) -> JSONResponse:
         return error_response(ROOM_ERROR_STATUS.get(exc.code, 400), exc.code, exc.message)
 
     @app.exception_handler(RequestValidationError)
@@ -98,6 +131,11 @@ async def health() -> HealthResponse:
 
 
 api.include_router(rooms_routes.router)
+api.include_router(photos_routes.router)
+api.include_router(auth_routes.router)
+api.include_router(me_routes.router)
+api.include_router(friends_routes.router)
+api.include_router(invites_routes.router)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -111,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     install_error_handlers(app)
     app.include_router(api)
+    app.include_router(user_ws.router)  # before ws: "/ws/me" would match "/ws/{code}"
     app.include_router(ws.router)
     return app
 

@@ -2,6 +2,8 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAccount } from '@/account';
+import { InvitesInbox } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { useAppTheme } from '@/theme';
 
@@ -9,6 +11,7 @@ import { useAppTheme } from '@/theme';
 export default function HomeScreen() {
   // Grab our colors, and the switch that flips light/dark mode.
   const { colors, isDark, toggleDark } = useAppTheme();
+  const account = useAccount();
 
   return (
     // SafeAreaView keeps our stuff away from the phone's notch and bottom bar.
@@ -16,6 +19,15 @@ export default function HomeScreen() {
       {/* ---------- TOP: the app name and the light/dark button ---------- */}
       <View style={styles.topBar}>
         <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
+        {/* Signed in? Go to your profile. Not yet? Sign in. */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push(account.me ? '/profile' : '/signin')}
+          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.text }]}>
+          <Text style={[styles.themeButtonText, { color: colors.text }]}>
+            {account.me ? 'PROFILE' : 'SIGN IN'}
+          </Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -26,6 +38,9 @@ export default function HomeScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Friends asking you to join their game (only when signed in). */}
+      <InvitesInbox />
 
       {/* ---------- MIDDLE: the picture and the words ---------- */}
       <View style={styles.middle}>
@@ -93,9 +108,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginTop: 8,
   },
   appName: {
+    flex: 1, // pushes the buttons to the right
     fontSize: 22,
     fontWeight: '900',
   },

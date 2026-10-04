@@ -1,56 +1,72 @@
-# Welcome to your Expo app 👋
+# Munch app
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The Expo / React Native app. Screens are in `src/app/` (Expo Router: each file is a screen), and
+`src/game.tsx` talks to the server over REST and a WebSocket.
 
-## Get started
+## Setup
 
-1. Install dependencies
-
-   ```bash
-   npm install
+1. Install dependencies: `npm install`
+2. Create `frontend/.env` (Expo only reads this folder's `.env`; never commit it):
    ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
+   EXPO_PUBLIC_SERVER_URL=http://localhost:8000
    ```
+   Optional, for "Continue with Google" on the web:
+   ```
+   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<web client id>.apps.googleusercontent.com
+   ```
+3. Start the server (see [`server/README.md`](../server/README.md)).
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run
 
 ```bash
-npm run reset-project
+npx expo start          # then press w (web), i (iOS simulator) or a (Android)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### On a real phone
 
-### Other setup steps
+`localhost` on a phone means the phone itself, so:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+1. Start the server listening on your network:
+   `uv run uvicorn munch.main:app --reload --port 8000 --host 0.0.0.0` (from `server/`)
+2. Find your computer's LAN address (macOS: `ipconfig getifaddr en0`).
+3. Set `EXPO_PUBLIC_SERVER_URL=http://<that address>:8000` in `frontend/.env`.
+4. Restart `npx expo start` (env changes need a restart) and scan the QR code with Expo Go.
 
-## Learn more
+Phone and computer must be on the same Wi-Fi.
 
-To learn more about developing your project with Expo, look at the following resources:
+### Expo web
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+The server only accepts browser requests from `WEB_ORIGIN` in the repo-root `.env`. For
+`npx expo start --web` that's `http://localhost:8081`. Native apps aren't affected.
 
-## Join the community
+## Accounts, friends and invites
 
-Join our community of developers creating universal apps.
+Signing in is optional; guests can still create and join games.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **Email sign-in** works everywhere. For now the 6-digit code is printed in the server's
+  terminal (`Login code for you@example.com: 123456`), not emailed.
+- **Google sign-in** only shows on the web for now. In Google Cloud Console create an OAuth
+  client of type *Web application*, add your web address (e.g. `http://localhost:8081`) as an
+  authorised JavaScript origin and redirect URI, put its id in `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+  here and in `GOOGLE_CLIENT_IDS` in the repo-root `.env`. On phones Google sign-in needs a
+  [development build](https://docs.expo.dev/guides/google-authentication/) and
+  `@react-native-google-signin/google-signin`; Expo Go can't do it.
+- **Invites** arrive instantly while the app is open, and wait on the home screen otherwise.
+  There are no phone notifications.
+
+Code: `src/account.tsx` (session, API calls, live invites), screens `signin`, `profile`,
+`friends`, and `src/components/account-ui.tsx` (invites inbox, lobby friend buttons).
+
+## Before you push
+
+```bash
+npx expo lint
+npx tsc --noEmit
+```
+
+## Notes
+
+- Add packages with `npx expo install <package>`, not `npm install`, so versions match the SDK.
+- The server's message shapes are defined in `server/munch/models.py`. The types in
+  `src/game.tsx` copy them by hand, so update both when that file changes.
+- Agent-specific guidance: [`AGENTS.md`](AGENTS.md).

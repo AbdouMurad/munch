@@ -1,8 +1,9 @@
+import { Image } from 'expo-image';
 import { Redirect } from 'expo-router';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChunkyBox, ChunkyButton, Eye, Screen } from '@/components/ui';
-import { describe, useGame } from '@/game';
+import { describe, photoAddress, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // WINNER SCREEN: the game is over, here is where we're eating!
@@ -22,6 +23,8 @@ export default function WinnerScreen() {
   // "winner" is empty if nobody liked anything at all.
   const winner = result.picks[0];
   const runnersUp = result.picks.slice(1);
+  // The winner's photo. It was already downloaded while swiping, so it shows right away.
+  const winnerPhoto = winner ? photoAddress(winner.card) : null;
 
   return (
     <Screen>
@@ -57,8 +60,20 @@ export default function WinnerScreen() {
 
           {/* ---------- The winning restaurant ---------- */}
           <ChunkyBox background={colors.card} radius={20}>
+            {/* The restaurant photo, with the eye mascot underneath in case
+                there is no photo (or it is still loading). */}
             <View style={[styles.photo, { backgroundColor: colors.soft }]}>
               <Eye size={140} />
+              {winnerPhoto && (
+                <Image
+                  source={winnerPhoto}
+                  style={styles.photoImage}
+                  contentFit="cover" // fill the box, cropping the edges if needed
+                  transition={150} // fade in instead of popping in
+                  accessibilityLabel={`Photo of ${winner.card.name}`}
+                />
+              )}
+              {/* The sticker comes after the photo, so it sits on top of it. */}
               <View
                 style={[
                   styles.sticker,
@@ -158,6 +173,14 @@ const styles = StyleSheet.create({
     height: 190,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The picture covers the whole photo box, on top of the mascot.
+  photoImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   sticker: {
     position: 'absolute', // pinned to the top-left corner of the photo

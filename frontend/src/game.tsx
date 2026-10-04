@@ -7,16 +7,13 @@
 //
 // Every screen can reach into this file with:  const game = useGame();
 
+import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useRef, useState } from 'react';
 
-// Where the server lives. On a real phone "localhost" means the PHONE, so set
-// EXPO_PUBLIC_SERVER_URL to your computer's address, like http://192.168.1.5:8000
-const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL ?? 'http://localhost:8000';
-
-// Sockets use "ws" instead of "http" (and "wss" instead of "https").
-const SOCKET_URL = SERVER_URL.replace('http', 'ws');
+import { useAccount } from '@/account';
+import { SERVER_URL, SOCKET_URL } from '@/server';
 
 // Where the WEBSITE version of our app lives on the internet, like
 // https://munch.vercel.app (no "/" on the end). Set EXPO_PUBLIC_WEB_URL once we
@@ -37,6 +34,7 @@ export type Member = {
   displayName: string;
   isHost: boolean;
   progress: number; // how many cards they have swiped
+  userId: string | null; // their account, if they signed in (null = guest)
 };
 
 // One restaurant card.
@@ -49,8 +47,27 @@ export type Card = {
   priceLevel: number | null; // 1 = $, 2 = $$, ...
   primaryType: string | null; // like "ramen_restaurant"
   address: string | null;
+  photoUrl: string | null; // like "/api/photos/abc" on OUR server, or null if no photo
   mapsUri: string | null; // a link that opens the maps app
 };
+
+// The full web address of a card's photo, or null if it has none.
+// It points at our server, which sends the phone on to the real picture on Google
+// (so the Google key never has to be inside the app).
+export function photoAddress(card: Card) {
+  return card.photoUrl ? SERVER_URL + card.photoUrl : null;
+}
+
+// How many cards ahead we download photos for, so a photo is already there
+// when its card shows up.
+export const PRELOAD_AHEAD = 5;
+
+// Start downloading these cards' photos in the background (no waiting).
+// When the card shows up later, its photo comes straight from the phone's memory.
+export function preloadPhotos(cards: Card[]) {
+  const addresses = cards.map(photoAddress).filter((address) => address !== null);
+  if (addresses.length > 0) Image.prefetch(addresses);
+}
 
 // Everything about the room.
 export type Room = {
@@ -62,7 +79,7 @@ export type Room = {
 };
 
 // Our ticket into the room. The server gives us this when we create or join.
-type Session = {
+export type Session = {
   code: string;
   memberId: string; // who we are
   memberToken: string; // a secret that proves it's really us
@@ -98,6 +115,7 @@ type Game = {
   error: string; // a problem to show the person ('' = no problem)
   createRoom: (name: string, radiusM: number, filters: Filters) => void;
   joinRoom: (code: string, name: string) => void;
+  enterWithSession: (session: Session) => void; // e.g. after accepting a friend's invite
   startGame: () => void;
   swipe: (card: Card, liked: boolean) => void;
   leaveRoom: () => void;
@@ -123,6 +141,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
 
+  // If we're signed in, rooms we make or join are linked to our account.
+  const account = useAccount();
+
   // The open socket. A "ref" is a box that remembers one thing
   // without redrawing the screen when it changes.
   const socketRef = useRef<WebSocket | null>(null);
@@ -142,7 +163,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch(SERVER_URL + path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(account.token ? { Authorization: `Bearer ${account.token}` } : {}),
+        },
         body: JSON.stringify({ displayName: name, ...extras }),
       });
       const data = await response.json();
@@ -172,6 +196,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   function joinRoom(code: string, name: string) {
     enterRoom(`/api/rooms/${code}/join`, name, {});
+  }
+
+  function enterWithSession(session: Session) {
+    setError('');
+    setMyId(session.memberId);
+    openSocket(session);
   }
 
   // ---------- Talking to the server: the SOCKET ----------
@@ -208,6 +238,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // The host pressed Start. Here are the cards! Everyone goes to the swipe screen.
       if (message.type === 'room:started') {
+        // Get the first photos downloading right away, before the swipe screen even opens.
+        preloadPhotos(payload.deck.slice(payload.resumeAt, payload.resumeAt + PRELOAD_AHEAD));
         setDeck(payload.deck);
         setStartAt(payload.resumeAt);
         setMyYes(0);
@@ -300,6 +332,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         error,
         createRoom,
         joinRoom,
+        enterWithSession,
         startGame,
         swipe,
         leaveRoom,

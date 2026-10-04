@@ -29,7 +29,7 @@ Keep these in mind when making tradeoffs. For example, don't reach for a Node li
 - Ranking mixes rating and distance with some seeded randomness.
 
 **Non-goals (for now)**
-- User accounts and login. Members are anonymous, identified by a random token.
+- Required accounts. Signing in is optional (§5.5); guests still join with just a name.
 - Cities other than Vancouver.
 - Running more than one server process. Live room state lives in memory in one process (`--workers 1`).
 - Live Google calls during a session. Only the ingest script talks to Google (photos are the one exception, see §7.4).
@@ -163,14 +163,23 @@ CREATE INDEX restaurants_business_status_idx ON restaurants (business_status);
 **Data on Tiger** (crawl paused at the request cap, §7): 3,783 restaurants across Vancouver and
 Burnaby, 3,618 operational. 84% have a price level, 95% a rating, 90% opening hours.
 
-**Planned, not built yet.** Each goes in its own new migration (`002_...`, never edit 001):
-- **Users:** accounts are a non-goal for the MVP (§1); add a table when that changes.
-- **Swipes (Tiger track):** a `swipes` hypertable (`swiped_at, room_id, member_id, restaurant_id,
-  liked`, `create_hypertable('swipes', by_range('swiped_at'))`), a `restaurant_swipe_stats_daily`
-  continuous aggregate (likes and swipes per restaurant per day), and optionally compression on
-  old chunks. That is what the `/stats` route (`StatsResponse` in `models.py`) and the ranking's
-  crowd-popularity term were designed around. If rooms need to be durable, `rooms` and
-  `room_members` tables come with it.
+**Drafted, not applied yet:**
+- **`002_rooms_swipe_events.sql` (Tiger track):** `rooms`, `room_members`, the anonymous
+  `swipe_events` hypertable (every swipe in every room, guests included), the
+  `restaurant_swipe_stats_daily` continuous aggregate behind `/stats` and the crowd-popularity
+  term, and compression on chunks older than 7 days.
+- **`003_accounts.sql`:** optional accounts (guests still play anonymously). `users`,
+  `auth_identities` (Google `sub` or email), hashed `sessions` and `email_login_codes` (no
+  passwords), `user_preferences` (hard filters merged into a room's `Filters` at Start, plus soft
+  `favorite_types`), `friendships` (one row per ordered pair, pending/accepted) and `blocks`,
+  `room_members.user_id`, and **`swipes`**: one row per signed-in swipe (`swipe_id` primary key,
+  `user_id, restaurant_id, liked, swiped_at`), never overwritten, used to learn what each user
+  likes and for the profile's Liked/Passed lists (latest row per restaurant).
+
+**Applying migrations:** `cd server && uv run python -m munch.db.migrate` runs every pending
+file in order, each in its own transaction, and records it in `schema_migrations` (version,
+name, checksum). `--status` lists applied/pending; `--baseline N` marks 001..N as applied
+without running them (for a DB that already had them). Editing an applied file is refused.
 
 Use `asyncpg` with raw SQL (no ORM) so the Tiger/PostGIS features are visible in the code. Pass
 geography as `ST_MakePoint(lng, lat)::geography` (longitude first).
@@ -200,6 +209,7 @@ class Member(BaseModel):
     display_name: str
     is_host: bool
     progress: int                           # number of cards swiped
+    user_id: str | None = None              # signed-in account (for "add friend"); None = guest
 
 class Card(BaseModel):
     id: str                                 # google place id
@@ -285,6 +295,48 @@ npx json-schema-to-typescript contracts/ws-messages.schema.json -o web/src/lib/g
 ```
 
 Add `make contracts` to run all three. Commit the generated files so the frontend never needs Python installed. Whoever changes `models.py` re-runs it in the same PR.
+
+### 5.5 Accounts, friends and invites
+
+Optional accounts (tables: migrations `003`, `004_room_invites`). Code: `server/munch/accounts/` and
+`routes/{auth,me,friends,invites}.py`. Everything here needs `DATABASE_URL`; without it these
+endpoints answer `503 UNAVAILABLE` and rooms keep working for guests.
+
+**Sign-in.** No passwords. Either Google (the app gets an ID token from Google Sign-In; the
+server checks its signature, issuer, expiry, that the audience is one of `GOOGLE_CLIENT_IDS`,
+and that the email is verified) or a 6-digit code for any email (10 min, 5 attempts, 5 codes
+per hour; **for now the code is only written to the server log**). Both return
+`AuthResponse { sessionToken, user: MyProfile, isNew }`. A Google login and an email login with
+the same verified address are the same account. The client stores `sessionToken` (SecureStore
+on phones) and sends `Authorization: Bearer <sessionToken>`. Only its SHA-256 is stored.
+Logout deletes the session.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| `POST` | `/auth/google` | `{ idToken }` | `AuthResponse` · `401` bad token |
+| `POST` | `/auth/email/start` | `{ email }` | `204` · `429 RATE_LIMITED` |
+| `POST` | `/auth/email/verify` | `{ email, code }` | `AuthResponse` · `400 INVALID_CODE` |
+| `POST` | `/auth/logout` | – | `204` |
+| `GET` / `PATCH` | `/me` | `{ handle?, displayName?, shareLikes? }` | `MyProfile` · `409 HANDLE_TAKEN` |
+| `GET` / `PUT` | `/me/preferences` | `Preferences { priceLevels, excludeTypes, favoriteTypes, dietary, maxRadiusM }` | `Preferences` |
+| `GET` | `/me/invites` | – | `{ invites: RoomInvite[] }` (pending, unexpired) |
+| `GET` | `/friends` | – | `{ friends, incoming, outgoing }`, each `Friendship { user: PublicUser, status, since }` |
+| `POST` | `/friends` | `{ handle }` or `{ userId }` | `Friendship` (`outgoing`, or `friends` if they had already asked) |
+| `POST` | `/friends/{userId}/accept` | – | `204` |
+| `DELETE` | `/friends/{userId}` | – | `204` (unfriend, decline or cancel) |
+| `POST` | `/rooms/{code}/invites` | `{ userIds }` | `{ invited: userId[] }` (friends only; repeats skipped) · `403` not in the room |
+| `POST` | `/invites/{id}/accept` | – | `RoomSession` (joins as your account) · `404` expired |
+| `POST` | `/invites/{id}/decline` | – | `204` |
+
+`POST /rooms` and `/rooms/{code}/join` accept the same optional Bearer header: the member is
+then linked to the account (`Member.userId`) and their swipes are saved to `swipes`. A bad or
+missing token there just means guest. `PublicUser { id, handle, displayName, avatarUrl }` is
+how other people appear; it never carries an email.
+
+**Invites** reach a friend while the app is open, live over `GET /ws/me?token=<sessionToken>`
+(server sends `{ type: "invite:received", payload: RoomInvite }`; client may `ping`), and wait
+in `GET /me/invites` (the home screen inbox) otherwise. There are no push notifications. Invites
+expire when the room starts or after 30 minutes.
 
 ---
 

@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from munch.accounts.deps import OptionalUser
 from munch.models import (
     CreateRoomRequest,
     ErrorResponse,
@@ -27,16 +28,23 @@ def session(room: LiveRoom, member: LiveMember) -> RoomSession:
 
 
 @router.post("", status_code=201, responses={422: {"model": ErrorResponse}})
-async def create_room(body: CreateRoomRequest, state: StateDep) -> RoomSession:
+async def create_room(body: CreateRoomRequest, state: StateDep, user: OptionalUser) -> RoomSession:
+    """Signed-in callers (Bearer token) are linked to their account; guests work too."""
     room, member = state.rooms.create_room(
-        body.display_name, body.center, body.radius_m, body.filters
+        body.display_name,
+        body.center,
+        body.radius_m,
+        body.filters,
+        user_id=user.id if user else None,
     )
     return session(room, member)
 
 
 @router.post("/{code}/join", responses={**NOT_FOUND, 409: {"model": ErrorResponse}})
-async def join_room(code: str, body: JoinRoomRequest, state: StateDep) -> RoomSession:
-    room, member = state.rooms.join_room(code, body.display_name)
+async def join_room(
+    code: str, body: JoinRoomRequest, state: StateDep, user: OptionalUser
+) -> RoomSession:
+    room, member = state.rooms.join_room(code, body.display_name, user_id=user.id if user else None)
     await state.hub.broadcast(room, RoomStateMessage(payload=room.to_state()))
     return session(room, member)
 
