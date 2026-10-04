@@ -8,12 +8,18 @@
 // Every screen can reach into this file with:  const game = useGame();
 
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { createContext, ReactNode, useContext, useRef, useState } from 'react';
 
 import { useAccount } from '@/account';
 import { SERVER_URL, SOCKET_URL } from '@/server';
 
+// Where the WEBSITE version of our app lives on the internet, like
+// https://munch.vercel.app (no "/" on the end). Set EXPO_PUBLIC_WEB_URL once we
+// put the website online. Until then this is empty and joinLink() makes a
+// link that only works while you are testing (see joinLink below).
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? '';
 
 // We don't ask for the phone's location yet, so every room is in downtown Vancouver.
 // TODO: use the phone's real location
@@ -337,6 +343,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
 }
 
 // ---------- Little helpers that turn server data into nice words ----------
+
+// The invite link for a room: tap it, and you land on the Join screen with the
+// code already typed in for you. "ABC234" -> ".../join?code=ABC234"
+//
+// The "?code=ABC234" part is like a sticky note on the link. The Join screen
+// reads that note to fill in the code boxes.
+export function joinLink(code: string) {
+  // 1. Our website is online? Then use a normal web link. It opens on ANY
+  //    phone or computer, even if your friend doesn't have our app.
+  if (WEB_URL) {
+    return `${WEB_URL}/join?code=${code}`;
+  }
+  // 2. Not online yet? Ask Expo to build the right link for wherever we are
+  //    running right now:
+  //      - in Expo Go:      exp://192.168.1.5:8081/--/join?code=ABC234
+  //      - in a browser:    http://localhost:8081/join?code=ABC234
+  //      - in the real app: frontend://join?code=ABC234
+  //    (Expo Go links only work for friends on the same Wi-Fi who have Expo Go.)
+  return Linking.createURL('/join', { queryParams: { code } });
+}
 
 // "Maya" -> "MA"
 export function initials(name: string) {

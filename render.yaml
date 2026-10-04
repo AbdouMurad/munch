@@ -1,0 +1,41 @@
+# Tells Render (render.com) how to run our server on the internet,
+# so it has ONE address that never changes and works when our laptops are off.
+#
+# Render reads this file by itself when you connect the GitHub repo
+# (Dashboard -> New -> Blueprint). You never run this file yourself.
+
+services:
+  - type: web # a "web service": a program that answers requests from the internet
+    name: munch-server # becomes the address: https://munch-server.onrender.com
+    runtime: python
+    plan: free # goes to sleep after ~15 quiet minutes; the first visit wakes it up (slowly)
+
+    # Our server lives in the server/ folder, not at the top of the repo.
+    rootDir: server
+
+    # How to get ready: install exactly the packages listed in uv.lock.
+    # (--no-dev skips the testing tools, which the real server doesn't need.)
+    buildCommand: uv sync --frozen --no-dev
+
+    # How to start. Render picks the port number and hands it to us as $PORT.
+    # "--host 0.0.0.0" means "listen to the whole internet, not just this computer".
+    # ONE worker only: the rooms live in this one program's memory (docs/DESIGN.md §6).
+    startCommand: uv run --no-dev uvicorn munch.main:app --host 0.0.0.0 --port $PORT
+
+    # Render visits this page to check the server is alive.
+    healthCheckPath: /api/health
+
+    # The server's settings. These replace the .env file we use on our laptops.
+    envVars:
+      # Use the same Python we use on our laptops.
+      - key: PYTHON_VERSION
+        value: 3.12.9
+
+      # The website that is allowed to talk to this server.
+      - key: WEB_ORIGIN
+        value: https://kevinc6-frontend.expo.app
+
+      # SECRET! "sync: false" means it is NOT written here. Render asks you to
+      # paste it in on their website, so it never ends up in GitHub.
+      - key: DATABASE_URL
+        sync: false
