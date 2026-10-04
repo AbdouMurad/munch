@@ -1,6 +1,8 @@
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CardTaxi, Logo, useCity } from '@/city';
 import { InvitesInbox } from '@/components/account-ui';
 import { ChunkyButton } from '@/components/ui';
 import { useAppTheme } from '@/theme';
@@ -10,12 +12,18 @@ import { useAppTheme } from '@/theme';
 export default function PlayPage() {
   // Grab our colors, and the switch that flips light/dark mode.
   const { colors, isDark, toggleDark } = useAppTheme();
+  // Which special city we're in (Vancouver, Toronto, Edmonton), or null for none.
+  const city = useCity();
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       {/* ---------- TOP: the app name and the light/dark button ---------- */}
       <View style={styles.topBar}>
-        <Text style={[styles.appName, { color: colors.text }]}>munch</Text>
+        {/* The logo. In Vancouver, Toronto or Edmonton it's that city's special
+            logo; anywhere else it's just the word "munch" (see city.tsx). */}
+        <View style={styles.appName}>
+          <Logo />
+        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -50,11 +58,16 @@ export default function PlayPage() {
               styles.frontCard,
               { backgroundColor: colors.card, borderColor: colors.text },
             ]}>
-            {/* A ring (a circle with just a colored edge)... */}
-            <View style={[styles.ring, { borderColor: colors.accent }]}>
-              {/* ...with a dot inside it. */}
-              <View style={[styles.dot, { backgroundColor: colors.dot }]} />
-            </View>
+            {city ? (
+              // In a special city: that city's taxi drives across the card.
+              <CardTaxi width={184} />
+            ) : (
+              // Anywhere else: the bullseye. A ring (a circle with just a colored edge)...
+              <View style={[styles.ring, { borderColor: colors.accent }]}>
+                {/* ...with a dot inside it. */}
+                <View style={[styles.dot, { backgroundColor: colors.dot }]} />
+              </View>
+            )}
           </View>
 
           {/* Box 3: the "OH YES" sticker in the top-right corner */}
@@ -79,6 +92,13 @@ export default function PlayPage() {
         <Text style={[styles.footnote, { color: colors.softText }]}>
           Friends can join without an account
         </Text>
+        {/* Which version of the code this is (the latest git commit), in tiny
+            faint letters. It's only here to help us when something goes wrong:
+            "what does it say at the bottom of your home screen?"
+            The value is stamped on when the app is built (see app.config.js). */}
+        <Text style={[styles.version, { color: colors.softText }]}>
+          version {Constants.expoConfig?.extra?.version ?? 'unknown'}
+        </Text>
       </View>
     </View>
   );
@@ -101,8 +121,7 @@ const styles = StyleSheet.create({
   },
   appName: {
     flex: 1, // pushes the buttons to the right
-    fontSize: 22,
-    fontWeight: '900',
+    alignItems: 'flex-start', // keep the logo on the left, at its own size
   },
   themeButton: {
     borderWidth: 2,
@@ -197,5 +216,10 @@ const styles = StyleSheet.create({
   footnote: {
     fontSize: 13,
     textAlign: 'center',
+  },
+  version: {
+    fontSize: 10,
+    textAlign: 'center',
+    opacity: 0.6, // faint, so it doesn't draw attention
   },
 });
