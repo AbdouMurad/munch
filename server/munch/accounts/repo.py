@@ -77,6 +77,10 @@ async def sign_in_with_identity(
 
     A new login method joins an existing account only through a verified email, so signing in
     with Google and with an emailed code (same address) gives one account.
+
+    `avatar_url` is the login's own picture (Google's). It becomes the default picture of any
+    account that has none, so an account made with an email code picks up the Google picture
+    the first time it signs in with Google. A picture the user uploaded is never replaced.
     """
     async with pool.acquire() as conn, conn.transaction():
         row = await conn.fetchrow(
@@ -92,7 +96,7 @@ async def sign_in_with_identity(
                 provider,
                 subject,
             )
-            return _profile(row), False
+            return _profile(await _default_avatar(conn, row, avatar_url)), False
 
         created = False
         if email is not None:
@@ -116,7 +120,19 @@ async def sign_in_with_identity(
             subject,
             row["id"],
         )
-        return _profile(row), created
+        return _profile(await _default_avatar(conn, row, avatar_url)), created
+
+
+async def _default_avatar(conn: Any, row: asyncpg.Record, avatar_url: str | None) -> asyncpg.Record:
+    """Give a picture-less account this login's picture. Returns the (maybe updated) row."""
+    if avatar_url is None or row["avatar_url"] is not None:
+        return row
+    updated: asyncpg.Record = await conn.fetchrow(
+        f"UPDATE users AS u SET avatar_url = $2 WHERE u.id = $1 RETURNING {USER_COLS}",
+        row["id"],
+        avatar_url,
+    )
+    return updated
 
 
 async def get_profile(pool: Pool, user_id: str) -> MyProfile:
@@ -166,6 +182,53 @@ async def find_by_handle(pool: Pool, handle: str) -> PublicUser | None:
         handle,
     )
     return _public(row) if row else None
+
+
+# --- Profile pictures -----------------------------------------------------
+
+
+async def set_avatar(pool: Pool, user_id: str, content_type: str, data: bytes) -> MyProfile:
+    """Store the picture and point avatar_url at it. The ?v= changes on every upload, so
+    phones and browsers fetch the new picture instead of showing a cached old one."""
+    async with pool.acquire() as conn, conn.transaction():
+        updated_at = await conn.fetchval(
+            """INSERT INTO user_avatars (user_id, content_type, data) VALUES ($1, $2, $3)
+               ON CONFLICT (user_id) DO UPDATE SET content_type = EXCLUDED.content_type,
+                 data = EXCLUDED.data, updated_at = now()
+               RETURNING updated_at""",
+            user_id,
+            content_type,
+            data,
+        )
+        version = int(updated_at.timestamp() * 1000)
+        row = await conn.fetchrow(
+            f"UPDATE users AS u SET avatar_url = $2 WHERE u.id = $1 RETURNING {USER_COLS}",
+            user_id,
+            f"/api/users/{user_id}/avatar?v={version}",
+        )
+    if row is None:
+        raise AccountError("UNAUTHORIZED", "Account no longer exists")
+    return _profile(row)
+
+
+async def get_avatar(pool: Pool, user_id: str) -> tuple[str, bytes] | None:
+    row = await pool.fetchrow(
+        "SELECT content_type, data FROM user_avatars WHERE user_id = $1", uuid_str(user_id)
+    )
+    return (row["content_type"], bytes(row["data"])) if row else None
+
+
+async def remove_avatar(pool: Pool, user_id: str) -> MyProfile:
+    """Remove the uploaded picture (and a Google one): back to initials."""
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("DELETE FROM user_avatars WHERE user_id = $1", user_id)
+        row = await conn.fetchrow(
+            f"UPDATE users AS u SET avatar_url = NULL WHERE u.id = $1 RETURNING {USER_COLS}",
+            user_id,
+        )
+    if row is None:
+        raise AccountError("UNAUTHORIZED", "Account no longer exists")
+    return _profile(row)
 
 
 # --- Sessions -------------------------------------------------------------

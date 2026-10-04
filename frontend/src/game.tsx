@@ -35,6 +35,7 @@ export type Member = {
   isHost: boolean;
   progress: number; // how many cards they have swiped
   userId: string | null; // their account, if they signed in (null = guest)
+  avatarUrl: string | null; // their profile picture, if they have one
 };
 
 // One restaurant card.

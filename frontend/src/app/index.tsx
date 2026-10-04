@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -12,8 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account';
-import { Avatar, Eye } from '@/components/ui';
-import { initials } from '@/game';
+import { UserAvatar } from '@/components/account-ui';
+import { Eye } from '@/components/ui';
 import FriendsPage from '@/pages/friends-page';
 import PlayPage from '@/pages/play-page';
 import ProfilePage from '@/pages/profile-page';
@@ -34,6 +34,7 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions(); // each page is exactly one screen wide
   const { tab, setTab } = useTabs();
+  const [pageHeight, setPageHeight] = useState(0); // the space between the notch and the bar
   const scrollRef = useRef<ScrollView>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const index = TAB_ORDER.indexOf(tab);
@@ -66,12 +67,17 @@ export default function HomeScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         // Open on the right page (Play, unless another screen picked one).
-        onLayout={() => scrollRef.current?.scrollTo({ x: index * width, animated: false })}
+        onLayout={(event) => {
+          setPageHeight(event.nativeEvent.layout.height);
+          scrollRef.current?.scrollTo({ x: index * width, animated: false });
+        }}
         style={styles.pager}>
         {TAB_ORDER.map((name) => {
           const PageContent = PAGES[name];
           return (
-            <View key={name} style={{ width }}>
+            // Each page is exactly one screen wide and exactly as tall as the space it has,
+            // so a long page scrolls instead of running off behind the bar.
+            <View key={name} style={{ width, height: pageHeight || undefined }}>
               <PageContent />
             </View>
           );
@@ -94,9 +100,9 @@ function NavBar() {
     {
       name: 'profile',
       label: 'Profile',
-      // Signed in: your initials, like Instagram's little profile picture.
+      // Signed in: your picture (or initials), like Instagram's little profile picture.
       icon: account.me ? (
-        <Avatar initials={initials(account.me.displayName)} />
+        <UserAvatar name={account.me.displayName} avatarUrl={account.me.avatarUrl} size={34} />
       ) : (
         <View style={[styles.personIcon, { borderColor: colors.text }]} />
       ),

@@ -1,13 +1,54 @@
 // Building blocks for the account features: text boxes, little buttons, chips,
 // the invites inbox on the home screen, and the friend buttons in the lobby.
 
+import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
-import { ChunkyBox } from '@/components/ui';
-import { displayHandle, FriendsList, Invite, useAccount } from '@/account';
-import { Member, Room, Session, useGame } from '@/game';
+import { avatarUri, displayHandle, FriendsList, Invite, useAccount } from '@/account';
+import { Avatar, ChunkyBox } from '@/components/ui';
+import { initials, Member, Room, Session, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
+
+// ---------- UserAvatar ----------
+// Someone's profile picture in a circle. No picture? Their initials, like before.
+export function UserAvatar({ name, avatarUrl, size = 40 }: {
+  name: string;
+  avatarUrl: string | null | undefined;
+  size?: number;
+}) {
+  const { colors } = useAppTheme();
+  const uri = avatarUri(avatarUrl);
+  if (!uri) {
+    if (size === 40) return <Avatar initials={initials(name)} />;
+    return (
+      <View
+        style={[
+          styles.bigInitials,
+          { width: size, height: size, borderRadius: size / 2 },
+          { backgroundColor: colors.card, borderColor: colors.text },
+        ]}>
+        <Text style={[styles.bigInitialsText, { color: colors.text, fontSize: size / 3 }]}>
+          {initials(name)}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      accessibilityLabel={`${name}'s picture`}
+      contentFit="cover"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2, // half the size = a circle
+        borderWidth: 2,
+        borderColor: colors.text,
+      }}
+    />
+  );
+}
 
 // ---------- Field ----------
 // A label with a text box under it.
@@ -43,6 +84,7 @@ export function SmallButton({ label, onPress, loud = false, disabled = false }: 
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
+      hitSlop={6} // a little extra room around it counts as a tap too
       style={[
         styles.smallButton,
         {
@@ -67,6 +109,7 @@ export function Chip({ label, on, onPress }: { label: string; on: boolean; onPre
       accessibilityRole="checkbox"
       accessibilityState={{ checked: on }}
       onPress={onPress}
+      hitSlop={4}
       style={[
         styles.chip,
         { backgroundColor: on ? colors.primary : colors.card, borderColor: colors.text },
@@ -224,17 +267,25 @@ export function InviteFriends({ room }: { room: Room }) {
 }
 
 const styles = StyleSheet.create({
+  bigInitials: {
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigInitialsText: {
+    fontWeight: '900',
+  },
   field: {
-    gap: 8,
+    gap: 6,
   },
   label: {
     fontSize: 14,
     fontWeight: '800',
   },
   input: {
-    fontSize: 17,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   smallButton: {
     borderWidth: 2,

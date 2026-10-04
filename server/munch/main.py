@@ -30,6 +30,7 @@ from munch.routes import invites as invites_routes
 from munch.routes import me as me_routes
 from munch.routes import photos as photos_routes
 from munch.routes import rooms as rooms_routes
+from munch.routes import users as users_routes
 from munch.state import AppState
 
 log = logging.getLogger("munch")
@@ -108,7 +109,11 @@ def install_error_handlers(app: FastAPI) -> None:
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         first = exc.errors()[0] if exc.errors() else {}
         where = ".".join(str(p) for p in first.get("loc", ()))
-        message = f"{where}: {first.get('msg', 'invalid request')}" if where else "invalid request"
+        msg = str(first.get("msg", "invalid request"))
+        if msg.startswith("Value error, "):  # our own rules are already written for people
+            message = msg.removeprefix("Value error, ")
+        else:
+            message = f"{where}: {msg}" if where else "invalid request"
         return error_response(422, "VALIDATION_ERROR", message)
 
     @app.exception_handler(StarletteHTTPException)
@@ -136,6 +141,7 @@ api.include_router(auth_routes.router)
 api.include_router(me_routes.router)
 api.include_router(friends_routes.router)
 api.include_router(invites_routes.router)
+api.include_router(users_routes.router)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

@@ -10,16 +10,24 @@ import { useAppTheme } from '@/theme';
 // ---------- Page ----------
 // Like <Screen>, but without its own notch padding: the home screen around the
 // pages already keeps everything clear of the notch and the bottom bar.
-export function Page({ title, children }: { title: string; children: ReactNode }) {
+export function Page({ title, action, footer, children }: {
+  title: string;
+  action?: ReactNode; // a button on the right of the title, like "Sign out"
+  footer?: ReactNode; // stays at the bottom, always visible, like a "Save" button
+  children: ReactNode;
+}) {
   const { colors } = useAppTheme();
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled">
-      <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-      {children}
-    </ScrollView>
+    <View style={[styles.page, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+          {action}
+        </View>
+        {children}
+      </ScrollView>
+      {footer && <View style={[styles.footer, { borderColor: colors.text }]}>{footer}</View>}
+    </View>
   );
 }
 
@@ -36,14 +44,29 @@ export function SignInFirst({ why }: { why: string }) {
 }
 
 const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+  },
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 16,
+    paddingTop: 10,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '900',
   },
   signIn: {

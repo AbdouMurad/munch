@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { displayHandle, Friendship, FriendsList, useAccount } from '@/account';
-import { Field, Message, SmallButton } from '@/components/account-ui';
-import { Avatar, ChunkyButton } from '@/components/ui';
-import { initials } from '@/game';
+import { Field, Message, SmallButton, UserAvatar } from '@/components/account-ui';
+import { ChunkyButton } from '@/components/ui';
 import { Page, SignInFirst } from '@/pages/page';
 import { useAppTheme } from '@/theme';
 
@@ -137,7 +136,7 @@ function People({ title, people, children }: {
       <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
       {people.map((f) => (
         <View key={f.user.id} style={[styles.row, { borderColor: colors.text }]}>
-          <Avatar initials={initials(f.user.displayName)} />
+          <UserAvatar name={f.user.displayName} avatarUrl={f.user.avatarUrl} />
           <View style={styles.who}>
             <Text style={[styles.name, { color: colors.text }]}>{f.user.displayName}</Text>
             <Text style={{ color: colors.softText }}>{displayHandle(f.user)}</Text>

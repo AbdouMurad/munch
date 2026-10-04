@@ -3,9 +3,9 @@ import { Redirect } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
-import { AddFriendButton, InviteFriends } from '@/components/account-ui';
-import { Avatar, BackButton, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
-import { initials, joinLink, useGame } from '@/game';
+import { AddFriendButton, InviteFriends, UserAvatar } from '@/components/account-ui';
+import { BackButton, ChunkyButton, ErrorLine, Screen } from '@/components/ui';
+import { joinLink, useGame } from '@/game';
 import { useAppTheme } from '@/theme';
 
 // LOBBY SCREEN: wait for friends to join, then the host starts the game.
@@ -125,7 +125,7 @@ export default function LobbyScreen() {
         {/* Draw one row for each friend. */}
         {room.members.map((member) => (
           <View key={member.id} style={[styles.playerRow, { borderColor: colors.text }]}>
-            <Avatar initials={initials(member.displayName)} />
+            <UserAvatar name={member.displayName} avatarUrl={member.avatarUrl} />
             <Text style={[styles.playerName, { color: colors.text }]}>
               {member.displayName}
               {member.id === game.myId ? ' (you)' : ''}
