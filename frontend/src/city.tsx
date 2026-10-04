@@ -20,9 +20,12 @@ import { useAppTheme } from '@/theme';
 // logo      = the "munch <City>" picture for the home screen.
 // darkLogo  = the same logo in dark-mode colors (cream word, see-through background).
 // taxi      = the moving taxi picture (a GIF) for loading screens. Yellow background.
-// darkTaxi  = the same taxi on a DARK background, for dark mode (loading screens and the home card).
 // cardTaxi  = the same taxi on a WHITE background, for the white card on the home screen.
-// To add a new city: add its two pictures to assets/images/cities/ and
+// darkTaxi  = the taxi for loading screens in DARK mode. Its background is the
+//             same dark color as the screen, so no box shows around it.
+// darkCardTaxi = the taxi for the home-screen card in DARK mode. Its background
+//             is the same brown as the card, so no box shows around it there either.
+// To add a new city: add its pictures to assets/images/cities/ and
 // add one more block here. Nothing else needs to change.
 const CITIES = [
   {
@@ -33,6 +36,7 @@ const CITIES = [
     darkLogo: require('@/assets/images/cities/logo-dark-vancouver.png'),
     taxi: require('@/assets/images/cities/taxi-vancouver.gif'),
     darkTaxi: require('@/assets/images/cities/taxi-dark-vancouver.gif'),
+    darkCardTaxi: require('@/assets/images/cities/taxi-dark-card-vancouver.gif'),
     cardTaxi: require('@/assets/images/cities/taxi-card-vancouver.gif'),
   },
   {
@@ -42,8 +46,8 @@ const CITIES = [
     logo: require('@/assets/images/cities/logo-toronto.png'),
     darkLogo: require('@/assets/images/cities/logo-dark-toronto.png'),
     taxi: require('@/assets/images/cities/taxi-toronto.gif'),
-    // TODO: this one is a still picture (it doesn't move). Swap in the moving version.
-    darkTaxi: require('@/assets/images/cities/taxi-dark-toronto.webp'),
+    darkTaxi: require('@/assets/images/cities/taxi-dark-toronto.gif'),
+    darkCardTaxi: require('@/assets/images/cities/taxi-dark-card-toronto.gif'),
     cardTaxi: require('@/assets/images/cities/taxi-card-toronto.gif'),
   },
   {
@@ -53,8 +57,8 @@ const CITIES = [
     logo: require('@/assets/images/cities/logo-edmonton.png'),
     darkLogo: require('@/assets/images/cities/logo-dark-edmonton.png'),
     taxi: require('@/assets/images/cities/taxi-edmonton.gif'),
-    // TODO: this one is a still picture (it doesn't move). Swap in the moving version.
-    darkTaxi: require('@/assets/images/cities/taxi-dark-edmonton.webp'),
+    darkTaxi: require('@/assets/images/cities/taxi-dark-edmonton.gif'),
+    darkCardTaxi: require('@/assets/images/cities/taxi-dark-card-edmonton.gif'),
     cardTaxi: require('@/assets/images/cities/taxi-card-edmonton.gif'),
   },
 ];
@@ -75,10 +79,10 @@ const DEFAULT_DARK_TAXI = CITIES[0].darkTaxi;
 // The yellow that the logo and taxi pictures are painted on. We paint the box
 // behind them the same yellow, so in dark mode they look like tidy yellow stickers.
 const PICTURE_YELLOW = '#FFE45C';
-// The same idea for the dark-mode taxi pictures. They are painted on the SAME
-// brown as the cards in dark mode (colors.card in theme.tsx), so a taxi sitting
-// on a card has no visible edge.
-const PICTURE_DARK = '#2A1A16';
+// The same idea for the dark-mode loading taxi: it is painted on the SAME dark
+// color as the screen in dark mode (colors.background in theme.tsx), so it
+// blends in with no visible edge.
+const PICTURE_DARK = '#160F0D';
 
 // Given a spot on the map, which special city is it in?
 // Gives back null (= "none of them") if it isn't near any.
@@ -209,8 +213,8 @@ export function CardTaxi({ width }: { width: number }) {
   if (!city) return null;
   return (
     <Image
-      // Dark mode gets the dark taxi, light mode gets the white one.
-      source={isDark ? city.darkTaxi : city.cardTaxi}
+      // Dark mode gets the dark taxi painted on card-brown, light mode gets the white one.
+      source={isDark ? city.darkCardTaxi : city.cardTaxi}
       style={[styles.cardTaxi, { width: width, height: (width * 334) / 600 }]}
       contentFit="contain"
       accessibilityLabel="A taxi driving along"

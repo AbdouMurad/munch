@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,21 +31,34 @@ const PAGES: Record<Tab, () => React.ReactNode> = {
 // Swipe right for your profile, swipe left for your friends, or tap the bar at the bottom.
 export default function HomeScreen() {
   const { colors } = useAppTheme();
-  const { width } = useWindowDimensions(); // each page is exactly one screen wide
+  // How wide one page is. It starts at 0 and gets its real value when we MEASURE
+  // the space the pages live in (see onLayout below).
+  // WHY measure instead of asking "how wide is the window?": the website is built
+  // ahead of time on a computer with no window, so that answer was 0, and it got
+  // stuck at 0. Every page ended up zero wide, squashed against the left edge.
+  const [width, setWidth] = useState(0);
   const { tab, setTab } = useTabs();
   const [pageHeight, setPageHeight] = useState(0); // the space between the notch and the bar
   const scrollRef = useRef<ScrollView>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const index = TAB_ORDER.indexOf(tab);
 
+  // False until we have jumped to the starting page once.
+  const hasOpened = useRef(false);
+
   // When the tab changes (a tap on the bar, or another screen asked for it), slide there.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ x: index * width, animated: true });
+    if (width === 0) return; // not measured yet: there is nowhere to slide to
+    // The very first time, JUMP straight to the right page (Play, unless another
+    // screen picked one). After that, slide smoothly.
+    scrollRef.current?.scrollTo({ x: index * width, animated: hasOpened.current });
+    hasOpened.current = true;
   }, [index, width]);
 
   // While you swipe, wait until the pages stop moving, then light up that tab in the bar.
   // (Waiting matters: a tap from Profile to Friends slides PAST Play on the way.)
   function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (width === 0) return; // not measured yet
     const x = event.nativeEvent.contentOffset.x;
     clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => {
@@ -66,16 +78,20 @@ export default function HomeScreen() {
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        // Open on the right page (Play, unless another screen picked one).
+        // Measure the space the pages get. This runs when the screen first shows,
+        // and again whenever its size changes (a phone turning sideways, a browser
+        // window being resized). The effect above then jumps to the right page.
         onLayout={(event) => {
+          setWidth(event.nativeEvent.layout.width);
           setPageHeight(event.nativeEvent.layout.height);
-          scrollRef.current?.scrollTo({ x: index * width, animated: false });
         }}
-        style={styles.pager}>
+        // Keep the pages invisible until they have been measured, so you never
+        // see them squashed for a moment while the page loads.
+        style={[styles.pager, { opacity: width === 0 ? 0 : 1 }]}>
         {TAB_ORDER.map((name) => {
           const PageContent = PAGES[name];
           return (
-            // Each page is exactly one screen wide and exactly as tall as the space it has,
+            // Each page is exactly as wide and exactly as tall as the space it has,
             // so a long page scrolls instead of running off behind the bar.
             <View key={name} style={{ width, height: pageHeight || undefined }}>
               <PageContent />
