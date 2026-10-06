@@ -413,7 +413,7 @@ practice **trims some after the cap**: a saturated circle can come back with 19.
 - **Boxes** (`ingest/grid.py`, south-west and north-east corners):
   `test` Metrotown 49.222,-123.012 → 49.232,-122.992 · `city` 49.198,-123.225 → 49.317,-123.023 ·
   **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850 ·
-  `edmonton` 53.390,-113.720 → 53.720,-113.260 (Edmonton out to Sherwood Park).
+  `edmonton` 53.395,-113.714 → 53.716,-113.271 (City of Edmonton).
 - Tile the box into 1,500 m squares (187 for `vanburnaby`). Search each with the smallest circle
   covering it (half the diagonal), `rankPreference: DISTANCE`, 5 requests in flight.
 - **Saturated cell → density-sized split.** Results are nearest-first, so the distance to the
@@ -423,7 +423,7 @@ practice **trims some after the cap**: a saturated circle can come back with 19.
 - Below a **40 m** search radius a still-saturated cell is logged as dense (mall food courts).
 - Every result is upserted by place id (`ON CONFLICT (id) DO UPDATE`), so overlapping circles never
   duplicate rows; `RETURNING (xmax = 0)` reports which were new.
-- Progress is saved to `server/crawl_state.json` after every response. Re-running the same
+- Progress is saved to `server/crawl_state-<area>.json` (one file per area) after every response. Re-running the same
   command **resumes** without re-paying; the file is deleted when the crawl completes. `--fresh`
   starts over.
 - Pure geometry (`tile_bbox`, `split_dims`, `split_cell`, `inside_disk`) is unit tested.

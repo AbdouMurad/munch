@@ -38,7 +38,9 @@ INITIAL_CELL_M = 1500
 MIN_RADIUS_M = 40  # mall food courts still saturate at ~100 m
 # Only trust 90% of the 20th result's distance as fully covered (ties, rounding).
 COVERED_MARGIN = 0.9
-STATE_FILE = Path("crawl_state.json")
+def state_file(bbox: str) -> Path:
+    """One resume file per area, so crawling one never overwrites another's progress."""
+    return Path(f"crawl_state-{bbox}.json")
 
 
 @dataclass
@@ -131,16 +133,19 @@ async def crawl(
                 f"(+{new} new)  {outcome}  | queue {len(queue)} | "
                 f"total {stats.new} new, {len(stats.seen)} seen"
             )
-            save_pending(STATE_FILE, bbox, [*queue, *tasks.values(), *stats.failed])
+            save_pending(state_file(bbox), bbox, [*queue, *tasks.values(), *stats.failed])
 
     return stats, [*queue, *stats.failed]
 
 
 async def run(args: argparse.Namespace) -> None:
-    resumed = None if args.fresh else load_pending(STATE_FILE, args.bbox)
+    resumed = None if args.fresh else load_pending(state_file(args.bbox), args.bbox)
     if resumed is not None:
         cells = resumed
-        log(f"Resuming {args.bbox}: {len(cells)} cells left from {STATE_FILE} (--fresh to restart)")
+        log(
+            f"Resuming {args.bbox}: {len(cells)} cells left from {state_file(args.bbox)}"
+            " (--fresh to restart)"
+        )
     else:
         cells = tile_bbox(BBOXES[args.bbox], INITIAL_CELL_M)
         log(f"bbox {args.bbox}: {len(cells)} initial cells of {INITIAL_CELL_M} m")
@@ -190,9 +195,12 @@ async def run(args: argparse.Namespace) -> None:
         f"dense {len(stats.dense)}, failed {len(stats.failed)}"
     )
     if leftover:
-        log(f"{len(leftover)} cells left. Re-run the same command to resume from {STATE_FILE}.")
+        log(
+            f"{len(leftover)} cells left. Re-run the same command to resume from"
+            f" {state_file(args.bbox)}."
+        )
     else:
-        STATE_FILE.unlink(missing_ok=True)
+        state_file(args.bbox).unlink(missing_ok=True)
         log("Crawl complete.")
 
 

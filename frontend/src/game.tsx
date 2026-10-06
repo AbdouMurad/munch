@@ -24,7 +24,8 @@ const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? '';
 
 // Where a new game searches when we don't know where the host is (location off, or the
 // phone couldn't work it out). Downtown Vancouver, because that's one of the areas the
-// crawl covered (see server/munch/ingest/grid.py).
+// crawl covered (see BBOXES in server/munch/ingest/grid.py).
+// Crawled a new area? Nothing to add here: we always search around the host.
 const DOWNTOWN_VANCOUVER = { lat: 49.2827, lng: -123.1207 };
 
 // The spot a new game searches around: the host's location, rounded to 3 decimal places
