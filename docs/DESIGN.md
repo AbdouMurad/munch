@@ -470,7 +470,7 @@ uv run python -m munch.ranking --type sushi_restaurant ramen_restaurant --open-n
 ```
 
 ### 8.1 Candidates and filters (SQL)
-Up to 1,000 nearest operational restaurants within the radius (PostGIS `ST_DWithin` plus KNN
+Up to 5,000 nearest operational restaurants within the radius (PostGIS `ST_DWithin` plus KNN
 `ORDER BY location <-> point`), with every `Filters` field (§5.1) except `open_now` applied in
 SQL:
 
@@ -504,7 +504,10 @@ popularity_score = clamp(log1p(v) / log1p(2000))
 # 3. Distance: 1 at the center, ~0.37 at half the radius, ~0.14 at the edge
 distance_score = exp(-distance_m / (radius_m / 2))
 
-base  = 0.5 * rating_score + 0.2 * popularity_score + 0.3 * distance_score
+# Weights depend on how far the host searches (weights_for): up to 3 km they're
+# 0.5 / 0.2 / 0.3; by 20 km distance drops to 0.1 and rating/popularity get the rest
+# (about 0.64 / 0.26), so a wide search surfaces the best places, not just the closest.
+base  = w_rating * rating_score + w_popularity * popularity_score + w_distance * distance_score
 score = base + rng.uniform(-0.05, 0.05)      # rng = random.Random(seed)
 ```
 

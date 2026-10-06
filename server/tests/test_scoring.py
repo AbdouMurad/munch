@@ -1,3 +1,4 @@
+import math
 import random
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from munch.ranking.scoring import (
     rank,
     rating_score,
     score,
+    weights_for,
 )
 
 
@@ -132,3 +134,31 @@ def test_is_open_24_7_and_unknown() -> None:
     assert is_open({"periods": [{"open": {"day": 0, "hour": 0, "minute": 0}}]}, SAT_NOON) is True
     assert is_open(None, SAT_NOON) is None
     assert is_open({}, SAT_NOON) is None
+
+
+def test_short_searches_keep_the_normal_weights() -> None:
+    for radius in (1000, 3000):
+        assert weights_for(radius) == (0.5, 0.2, 0.3)
+
+
+def test_wider_searches_move_weight_from_distance_to_quality() -> None:
+    w_rating, w_popularity, w_distance = weights_for(20000)
+    assert math.isclose(w_distance, 0.1)
+    assert w_rating > 0.5 and w_popularity > 0.2
+    assert math.isclose(w_rating / w_popularity, 0.5 / 0.2)  # quality keeps its own balance
+    previous = 0.3
+    for radius in (5000, 10000, 15000, 20000, 40000):
+        weights = weights_for(radius)
+        assert math.isclose(sum(weights), 1.0)  # scores stay on the same 0-1 scale
+        assert weights[2] <= previous  # distance only ever counts less as the search grows
+        previous = weights[2]
+
+
+def test_wide_search_prefers_great_places_further_away() -> None:
+    # On campus: an okay spot next door vs. a loved spot 6 km away (only in a wide search).
+    next_door = cand("next_door", 4.1, 120, 300)
+    worth_the_trip = cand("worth_the_trip", 4.7, 3000, 6000)
+    assert score(worth_the_trip, 20000) > score(next_door, 20000) + 0.2
+    # ...and the wider the search, the bigger its lead.
+    leads = [score(worth_the_trip, r) - score(next_door, r) for r in (8000, 12000, 20000)]
+    assert leads == sorted(leads)
