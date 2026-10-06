@@ -40,7 +40,7 @@ cd /home/abd/munch/server && set -a && source ../.env && set +a
    ```
    Then delete the test resume file so it can't mix with the real run (or pass `--fresh`):
    ```bash
-   rm -f crawl_state.json
+   rm -f crawl_state-test.json
    ```
 3. Full crawl of Vancouver + Burnaby:
    ```bash
@@ -49,7 +49,7 @@ cd /home/abd/munch/server && set -a && source ../.env && set +a
    Expect somewhere around 600 to 1,200 calls; the dense areas (downtown, Metrotown, Brentwood,
    Broadway) drive the total. It takes a few minutes.
 4. If it stops at the cap, **run the exact same command again**. It resumes from
-   `crawl_state.json` and doesn't re-pay for finished cells. When it prints
+   `crawl_state-<area>.json` (one per area) and doesn't re-pay for finished cells. When it prints
    `Crawl complete.` the state file is deleted.
 5. Check the result:
    ```bash
@@ -60,12 +60,12 @@ cd /home/abd/munch/server && set -a && source ../.env && set +a
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--bbox` | `vanburnaby` | `test` (Metrotown), `city`, `vanburnaby`, or `metro` (adds Richmond, North Van) |
+| `--bbox` | `vanburnaby` | `test` (Metrotown), `city`, `vanburnaby`, or `metro` (adds Richmond, North Van), `edmonton` (City of Edmonton) |
 | `--max-requests` | 200 | Hard cap on API calls for this run |
 | `--concurrency` | 5 | Calls in flight at once (speed only, not cost) |
 | `--dry-run` | | Print the grid size, make no calls |
 | `--no-db` | | Call the API but write nothing (testing without the DB) |
-| `--fresh` | | Ignore `crawl_state.json` and start the bbox over |
+| `--fresh` | | Ignore the area's `crawl_state-<area>.json` and start it over |
 
 Re-running a completed crawl is safe (rows are upserted by place id) but pays for every call
 again, so only do it to refresh data.

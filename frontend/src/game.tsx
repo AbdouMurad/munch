@@ -23,22 +23,28 @@ import { SERVER_URL, SOCKET_URL } from '@/server';
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? '';
 
 // Where a new game searches for restaurants: around the host (see searchSpot below).
-// We only have restaurants for Vancouver and Burnaby (the area the crawl covered,
-// "vanburnaby" in server/munch/ingest/grid.py), so outside it, or if we don't know where
-// the host is, the game searches downtown Vancouver instead of finding nothing.
+// We only have restaurants where the crawl has been (the boxes in
+// server/munch/ingest/grid.py), so outside them, or if we don't know where the host is,
+// the game searches downtown Vancouver instead of finding nothing.
+// Crawled a new area? Add its box here too.
 const DOWNTOWN_VANCOUVER = { lat: 49.2827, lng: -123.1207 };
-const AREA_WITH_RESTAURANTS = { minLat: 49.18, maxLat: 49.317, minLng: -123.225, maxLng: -122.89 };
+const AREAS_WITH_RESTAURANTS = [
+  { minLat: 49.18, maxLat: 49.317, minLng: -123.225, maxLng: -122.89 }, // Vancouver + Burnaby
+  { minLat: 53.395, maxLat: 53.716, minLng: -113.714, maxLng: -113.271 }, // Edmonton
+];
 
 // The spot a new game searches around: the host's location, rounded to 3 decimal places
 // (about 100 m, so friends in the room don't see your exact spot), or downtown Vancouver.
 function searchSpot(here: MyLocation | null) {
-  const area = AREA_WITH_RESTAURANTS;
   const inArea =
     here !== null &&
-    here.lat >= area.minLat &&
-    here.lat <= area.maxLat &&
-    here.lng >= area.minLng &&
-    here.lng <= area.maxLng;
+    AREAS_WITH_RESTAURANTS.some(
+      (area) =>
+        here.lat >= area.minLat &&
+        here.lat <= area.maxLat &&
+        here.lng >= area.minLng &&
+        here.lng <= area.maxLng,
+    );
   if (!here || !inArea) return DOWNTOWN_VANCOUVER;
   return { lat: Math.round(here.lat * 1000) / 1000, lng: Math.round(here.lng * 1000) / 1000 };
 }

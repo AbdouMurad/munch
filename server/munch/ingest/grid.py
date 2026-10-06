@@ -24,6 +24,7 @@ BBOXES = {
     "city": BBox(49.198, -123.225, 49.317, -123.023),  # City of Vancouver
     "vanburnaby": BBox(49.180, -123.225, 49.317, -122.890),  # Vancouver + Burnaby
     "metro": BBox(49.100, -123.270, 49.380, -122.850),  # + Richmond, North Van
+    "edmonton": BBox(53.395, -113.714, 53.716, -113.271),  # City of Edmonton
 }
 
 
