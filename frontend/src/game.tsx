@@ -22,24 +22,18 @@ import { SERVER_URL, SOCKET_URL } from '@/server';
 // link that only works while you are testing (see joinLink below).
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? '';
 
-// Where a new game searches for restaurants: around the host (see searchSpot below).
-// We only have restaurants for Vancouver and Burnaby (the area the crawl covered,
-// "vanburnaby" in server/munch/ingest/grid.py), so outside it, or if we don't know where
-// the host is, the game searches downtown Vancouver instead of finding nothing.
+// Where a new game searches when we don't know where the host is (location off, or the
+// phone couldn't work it out). Downtown Vancouver, because that's one of the areas the
+// crawl covered (see server/munch/ingest/grid.py).
 const DOWNTOWN_VANCOUVER = { lat: 49.2827, lng: -123.1207 };
-const AREA_WITH_RESTAURANTS = { minLat: 49.18, maxLat: 49.317, minLng: -123.225, maxLng: -122.89 };
 
 // The spot a new game searches around: the host's location, rounded to 3 decimal places
-// (about 100 m, so friends in the room don't see your exact spot), or downtown Vancouver.
+// (about 100 m, so friends in the room don't see your exact spot), or downtown Vancouver
+// if we don't know where they are. We send wherever they really are: if we haven't crawled
+// restaurants near them the server widens the search for itself (MAX_EXPANSIONS in
+// server/munch/ranking/deck.py), which beats silently moving the game to another city.
 function searchSpot(here: MyLocation | null) {
-  const area = AREA_WITH_RESTAURANTS;
-  const inArea =
-    here !== null &&
-    here.lat >= area.minLat &&
-    here.lat <= area.maxLat &&
-    here.lng >= area.minLng &&
-    here.lng <= area.maxLng;
-  if (!here || !inArea) return DOWNTOWN_VANCOUVER;
+  if (!here) return DOWNTOWN_VANCOUVER;
   return { lat: Math.round(here.lat * 1000) / 1000, lng: Math.round(here.lng * 1000) / 1000 };
 }
 

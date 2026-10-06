@@ -60,7 +60,7 @@ cd /home/abd/munch/server && set -a && source ../.env && set +a
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--bbox` | `vanburnaby` | `test` (Metrotown), `city`, `vanburnaby`, or `metro` (adds Richmond, North Van) |
+| `--bbox` | `vanburnaby` | `test` (Metrotown), `city`, `vanburnaby`, `metro` (adds Richmond, North Van), or `edmonton` (out to Sherwood Park) |
 | `--max-requests` | 200 | Hard cap on API calls for this run |
 | `--concurrency` | 5 | Calls in flight at once (speed only, not cost) |
 | `--dry-run` | | Print the grid size, make no calls |

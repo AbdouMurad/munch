@@ -75,7 +75,8 @@ type City = (typeof CITIES)[number];
 const CLOSE_ENOUGH = 0.5;
 
 // When we don't know the city, loading screens still need SOME taxi.
-// We use the first city's (Vancouver), because that's where our restaurants are.
+// We use the first city's (Vancouver). It's only a picture: the restaurants a game
+// finds come from where the host actually is, whatever taxi is on screen.
 const DEFAULT_TAXI = CITIES[0].taxi;
 const DEFAULT_DARK_TAXI = CITIES[0].darkTaxi;
 

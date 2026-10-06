@@ -4,17 +4,15 @@ spread out cuisines, and convert to Cards. Plugs into AppState.build_deck."""
 import json
 import random
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import asyncpg
 
 from munch.config import Settings
 from munch.models import Card, Filters, LatLng
-from munch.ranking.hours import is_open
+from munch.ranking.hours import is_open, tz_for
 from munch.ranking.scoring import Candidate, ScoreParams, diversify, rank
 from munch.rooms.fixture_deck import NO_EXCLUDE, DeckBuilder
 
-TZ = ZoneInfo("America/Vancouver")
 MAX_CANDIDATES = 1000
 MAX_EXPANSIONS = 3  # double the radius up to this many times if too few places
 # Too broad to count as "the same cuisine twice in a row".
@@ -124,9 +122,9 @@ async def build_deck(
     exclude: frozenset[str] = NO_EXCLUDE,
 ) -> list[Card]:
     """Up to settings.deck_size cards, widening the radius if fewer than min_candidates match.
-    `now` (for open_now) defaults to the current Vancouver time. Restaurants in `exclude`
-    are never dealt."""
-    now = now or datetime.now(TZ)
+    `now` (for open_now) defaults to the current time where the room is searching, so a room
+    in Edmonton isn't read on a Vancouver clock. Restaurants in `exclude` are never dealt."""
+    now = now or datetime.now(tz_for(center))
     radius: float = radius_m
     candidates = await fetch_candidates(pool, center, radius, filters, now, exclude)
     for _ in range(MAX_EXPANSIONS):

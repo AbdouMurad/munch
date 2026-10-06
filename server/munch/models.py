@@ -53,7 +53,7 @@ class Filters(CamelModel):
     exclude_types: list[str] = []  # e.g. ["fast_food_restaurant"]
     min_rating: Annotated[float, Field(ge=1, le=5)] | None = None
     min_reviews: Annotated[int, Field(ge=0)] = 0
-    open_now: bool = False  # Vancouver time; drops places with no hours on file
+    open_now: bool = False  # the room's local time; drops places with no hours on file
 
 
 class Member(CamelModel):

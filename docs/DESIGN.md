@@ -30,7 +30,7 @@ Keep these in mind when making tradeoffs. For example, don't reach for a Node li
 
 **Non-goals (for now)**
 - Required accounts. Signing in is optional (§5.5); guests still join with just a name.
-- Cities other than Vancouver.
+- Cities beyond the ones we've crawled (`BBOXES` in `ingest/grid.py`: Metro Vancouver and Edmonton). A room is always created at the host's real location, so a host elsewhere gets a thin deck rather than another city's restaurants.
 - Running more than one server process. Live room state lives in memory in one process (`--workers 1`).
 - Live Google calls during a session. Only the ingest script talks to Google (photos are the one exception, see §7.4).
 
@@ -203,7 +203,7 @@ class Filters(BaseModel):                   # all optional; how each applies: §
     exclude_types: list[str] = []           # e.g. ["fast_food_restaurant"]
     min_rating: float | None = None         # 1–5
     min_reviews: int = 0
-    open_now: bool = False                  # Vancouver time; drops places with no hours
+    open_now: bool = False                  # room's local time; drops places w/o hours
 
 class Member(BaseModel):
     id: str
@@ -412,7 +412,8 @@ practice **trims some after the cap**: a saturated circle can come back with 19.
 ### 7.2 Algorithm
 - **Boxes** (`ingest/grid.py`, south-west and north-east corners):
   `test` Metrotown 49.222,-123.012 → 49.232,-122.992 · `city` 49.198,-123.225 → 49.317,-123.023 ·
-  **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850.
+  **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850 ·
+  `edmonton` 53.390,-113.720 → 53.720,-113.260 (Edmonton out to Sherwood Park).
 - Tile the box into 1,500 m squares (187 for `vanburnaby`). Search each with the smallest circle
   covering it (half the diagonal), `rankPreference: DISTANCE`, 5 requests in flight.
 - **Saturated cell → density-sized split.** Results are nearest-first, so the distance to the
@@ -482,7 +483,7 @@ SQL:
 | `excludeTypes` | no overlap with the list |
 | `minRating` | `rating >= minRating` (unrated places drop out) |
 | `minReviews` | `rating_count >= minReviews` |
-| `openNow` | checked in Python against `opening_hours` at the current Vancouver time; places with no hours drop out |
+| `openNow` | checked in Python against `opening_hours` at the current time **where the room is searching** (`tz_for` in `ranking/hours.py`: a box per crawled province, defaulting to `America/Vancouver`); places with no hours drop out |
 
 Type values are Google's: `sushi_restaurant`, `ramen_restaurant`, `pizza_restaurant`,
 `vegan_restaurant`, `fast_food_restaurant`, `cafe`, `bakery`, and so on. The most common in our

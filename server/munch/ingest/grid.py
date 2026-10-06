@@ -24,6 +24,8 @@ BBOXES = {
     "city": BBox(49.198, -123.225, 49.317, -123.023),  # City of Vancouver
     "vanburnaby": BBox(49.180, -123.225, 49.317, -122.890),  # Vancouver + Burnaby
     "metro": BBox(49.100, -123.270, 49.380, -122.850),  # + Richmond, North Van
+    # Edmonton out to Sherwood Park, which is what the rows already in the DB cover.
+    "edmonton": BBox(53.390, -113.720, 53.720, -113.260),
 }
 
 

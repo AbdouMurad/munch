@@ -1,8 +1,10 @@
 import random
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
+from munch.models import LatLng
 from munch.ranking.deck import order_deck, type_key
-from munch.ranking.hours import is_open
+from munch.ranking.hours import is_open, tz_for
 from munch.ranking.scoring import (
     DEFAULT_PARAMS,
     Candidate,
@@ -132,3 +134,25 @@ def test_is_open_24_7_and_unknown() -> None:
     assert is_open({"periods": [{"open": {"day": 0, "hour": 0, "minute": 0}}]}, SAT_NOON) is True
     assert is_open(None, SAT_NOON) is None
     assert is_open({}, SAT_NOON) is None
+
+
+def test_tz_for_crawled_cities() -> None:
+    assert tz_for(LatLng(lat=49.2827, lng=-123.1207)) == ZoneInfo("America/Vancouver")
+    assert tz_for(LatLng(lat=53.5461, lng=-113.4938)) == ZoneInfo("America/Edmonton")
+    # Sherwood Park, the east edge of the Edmonton crawl.
+    assert tz_for(LatLng(lat=53.5116, lng=-113.3319)) == ZoneInfo("America/Edmonton")
+
+
+def test_tz_for_falls_back_outside_the_boxes() -> None:
+    assert tz_for(LatLng(lat=43.6532, lng=-79.3832)) == ZoneInfo("America/Vancouver")  # Toronto
+
+
+def test_tz_for_decides_open_now_at_the_same_instant() -> None:
+    """One instant, two cities: a 21:00-closing place is already shut in Edmonton (an hour
+    ahead) and still open in Vancouver. This is the bug the hard-coded timezone caused."""
+    hours = {"periods": [period(6, 11, 6, 21)]}  # Saturday 11:00 to 21:00
+    utc = datetime(2026, 10, 4, 3, 30, tzinfo=ZoneInfo("UTC"))  # Sat 20:30 PDT / Sat 21:30 MDT
+    vancouver = LatLng(lat=49.2827, lng=-123.1207)
+    edmonton = LatLng(lat=53.5461, lng=-113.4938)
+    assert is_open(hours, utc.astimezone(tz_for(vancouver))) is True
+    assert is_open(hours, utc.astimezone(tz_for(edmonton))) is False
