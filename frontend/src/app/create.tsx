@@ -1,3 +1,4 @@
+import Slider from '@react-native-community/slider';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -9,13 +10,22 @@ import { useGame } from '@/game';
 import { goBackOrHome } from '@/navigation';
 import { useAppTheme } from '@/theme';
 
-// The choices the host can pick from.
+// How far the game searches, picked with a slider (the server counts in meters).
+// The farther you go, the more the ranking cares about ratings and reviews and the less
+// about being close (server/munch/ranking/scoring.py, weights_for).
+const MIN_KM = 1;
+const MAX_KM = 25;
+const START_KM = 5; // 3 km from a campus or a suburb is often just that campus
+
+// A few words under the slider, so people know what the distance does to the picks.
+function distanceHint(km: number) {
+  if (km <= 3) return 'Close by: the nearest good spots first.';
+  if (km < 10) return 'A short trip: good spots nearby and a bit further.';
+  return 'Worth the trip: the best-rated spots win, even if they’re further.';
+}
+
+// The other choices the host can pick from.
 // "label" is what we show. "value" is what the server wants.
-const DISTANCES = [
-  { label: '1 km', value: 1000 }, // the server counts in meters
-  { label: '3 km', value: 3000 },
-  { label: '5 km', value: 5000 },
-];
 const PRICES = [
   { label: '$', value: 1 },
   { label: '$$', value: 2 },
@@ -61,7 +71,7 @@ export default function CreateScreen() {
   const account = useAccount();
 
   const [name, setName] = useState('');
-  const [distance, setDistance] = useState(3000);
+  const [distanceKm, setDistanceKm] = useState(START_KM);
   const [prices, setPrices] = useState([1, 2]); // you can pick MORE than one price
   const [minRating, setMinRating] = useState<number | null>(null);
   const [openNow, setOpenNow] = useState(false);
@@ -114,18 +124,24 @@ export default function CreateScreen() {
       <ChunkyBox background={colors.card} style={styles.settings}>
         <Text style={[styles.settingsTitle, { color: colors.text }]}>Game settings</Text>
 
-        <View style={styles.row}>
-          <Text style={[styles.settingName, { color: colors.text }]}>Distance</Text>
-          <View style={styles.chips}>
-            {DISTANCES.map((option) => (
-              <Chip
-                key={option.label}
-                label={option.label}
-                selected={distance === option.value}
-                onPress={() => setDistance(option.value)}
-              />
-            ))}
+        {/* Distance: drag the slider, 1 to 25 km. */}
+        <View style={styles.distance}>
+          <View style={styles.row}>
+            <Text style={[styles.settingName, { color: colors.text }]}>Distance</Text>
+            <Text style={[styles.distanceValue, { color: colors.text }]}>{distanceKm} km</Text>
           </View>
+          <Slider
+            accessibilityLabel="Distance"
+            minimumValue={MIN_KM}
+            maximumValue={MAX_KM}
+            step={1}
+            value={distanceKm}
+            onValueChange={setDistanceKm}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.soft}
+            thumbTintColor={colors.primary}
+          />
+          <Text style={[styles.hint, { color: colors.softText }]}>{distanceHint(distanceKm)}</Text>
         </View>
 
         <View style={styles.row}>
@@ -185,7 +201,7 @@ export default function CreateScreen() {
           primary
           onPress={() =>
             // Signed in? Play under your account name. Otherwise, the name typed above.
-            game.createRoom(account.me?.displayName ?? name, distance, {
+            game.createRoom(account.me?.displayName ?? name, distanceKm * 1000, {
               priceLevels: prices,
               minRating: minRating,
               openNow: openNow,
@@ -249,6 +265,16 @@ const styles = StyleSheet.create({
   },
   settingName: {
     fontSize: 15,
+  },
+  distance: {
+    gap: 4,
+  },
+  distanceValue: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  hint: {
+    fontSize: 13,
   },
   chips: {
     flexDirection: 'row',

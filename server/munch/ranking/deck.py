@@ -15,7 +15,10 @@ from munch.ranking.scoring import Candidate, ScoreParams, diversify, rank
 from munch.rooms.fixture_deck import NO_EXCLUDE, DeckBuilder
 
 TZ = ZoneInfo("America/Vancouver")
-MAX_CANDIDATES = 1000
+# The nearest this many places in the radius get scored. Big enough that a wide search
+# (say 20 km) really covers the area instead of just its closest corner; scoring a few
+# thousand rows takes milliseconds.
+MAX_CANDIDATES = 5000
 MAX_EXPANSIONS = 3  # double the radius up to this many times if too few places
 # Too broad to count as "the same cuisine twice in a row".
 GENERIC_TYPES = {"restaurant", "food", "meal_takeaway", "meal_delivery"}

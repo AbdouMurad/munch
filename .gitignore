@@ -41,6 +41,6 @@ yarn-error.log*
 *.log
 
 # Crawl resume file (server/munch/ingest)
-server/crawl_state.json
-server/crawl_state.tmp
+server/crawl_state*.json
+server/crawl_state*.tmp
 .modes-backup.patch

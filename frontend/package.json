@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.21",
+    "@react-native-community/slider": "5.2.0",
     "expo": "~57.0.26",
     "expo-auth-session": "~57.0.13",
     "expo-clipboard": "~57.0.2",

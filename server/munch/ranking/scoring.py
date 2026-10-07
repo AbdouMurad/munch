@@ -22,6 +22,13 @@ class ScoreParams:
     # Bounded on purpose: unbounded (Gumbel) noise over ~1,000 Metrotown candidates let
     # 0.64-score places jump ahead of 0.88s.
     jitter: float = 0.05
+    # The farther a game searches, the less distance should count: someone who picks 20 km
+    # wants the best places in that area, not just the closest. Up to near_radius_m the
+    # weights above apply as they are; by far_radius_m distance counts far_distance_share
+    # as much, and what it gave up goes to rating and popularity (see weights_for).
+    near_radius_m: float = 3000
+    far_radius_m: float = 20000
+    far_distance_share: float = 1 / 3
 
 
 DEFAULT_PARAMS = ScoreParams()
@@ -68,11 +75,26 @@ def distance_score(distance_m: float, radius_m: float) -> float:
     return math.exp(-distance_m / (radius_m / 2))
 
 
-def score(c: Candidate, radius_m: float, p: ScoreParams = DEFAULT_PARAMS) -> float:
+def weights_for(radius_m: float, p: ScoreParams = DEFAULT_PARAMS) -> tuple[float, float, float]:
+    """(rating, popularity, distance) weights for a search this wide. They always add up to
+    the same total; a wider search moves weight from distance to rating and popularity."""
+    far = clamp((radius_m - p.near_radius_m) / (p.far_radius_m - p.near_radius_m))
+    w_distance = p.w_distance * (1 - far * (1 - p.far_distance_share))
+    freed = p.w_distance - w_distance
+    quality = p.w_rating + p.w_popularity
     return (
-        p.w_rating * rating_score(c.rating, c.rating_count, p)
-        + p.w_popularity * popularity_score(c.rating_count, p)
-        + p.w_distance * distance_score(c.distance_m, radius_m)
+        p.w_rating + freed * p.w_rating / quality,
+        p.w_popularity + freed * p.w_popularity / quality,
+        w_distance,
+    )
+
+
+def score(c: Candidate, radius_m: float, p: ScoreParams = DEFAULT_PARAMS) -> float:
+    w_rating, w_popularity, w_distance = weights_for(radius_m, p)
+    return (
+        w_rating * rating_score(c.rating, c.rating_count, p)
+        + w_popularity * popularity_score(c.rating_count, p)
+        + w_distance * distance_score(c.distance_m, radius_m)
     )
 
 

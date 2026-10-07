@@ -412,7 +412,7 @@ practice **trims some after the cap**: a saturated circle can come back with 19.
 ### 7.2 Algorithm
 - **Boxes** (`ingest/grid.py`, south-west and north-east corners):
   `test` Metrotown 49.222,-123.012 → 49.232,-122.992 · `city` 49.198,-123.225 → 49.317,-123.023 ·
-  **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850.
+  **`vanburnaby` (default)** 49.180,-123.225 → 49.317,-122.890 · `metro` 49.100,-123.270 → 49.380,-122.850 · `edmonton` 53.395,-113.714 → 53.716,-113.271.
 - Tile the box into 1,500 m squares (187 for `vanburnaby`). Search each with the smallest circle
   covering it (half the diagonal), `rankPreference: DISTANCE`, 5 requests in flight.
 - **Saturated cell → density-sized split.** Results are nearest-first, so the distance to the
@@ -422,7 +422,7 @@ practice **trims some after the cap**: a saturated circle can come back with 19.
 - Below a **40 m** search radius a still-saturated cell is logged as dense (mall food courts).
 - Every result is upserted by place id (`ON CONFLICT (id) DO UPDATE`), so overlapping circles never
   duplicate rows; `RETURNING (xmax = 0)` reports which were new.
-- Progress is saved to `server/crawl_state.json` after every response. Re-running the same
+- Progress is saved to `server/crawl_state-<area>.json` (one file per area) after every response. Re-running the same
   command **resumes** without re-paying; the file is deleted when the crawl completes. `--fresh`
   starts over.
 - Pure geometry (`tile_bbox`, `split_dims`, `split_cell`, `inside_disk`) is unit tested.
@@ -470,7 +470,7 @@ uv run python -m munch.ranking --type sushi_restaurant ramen_restaurant --open-n
 ```
 
 ### 8.1 Candidates and filters (SQL)
-Up to 1,000 nearest operational restaurants within the radius (PostGIS `ST_DWithin` plus KNN
+Up to 5,000 nearest operational restaurants within the radius (PostGIS `ST_DWithin` plus KNN
 `ORDER BY location <-> point`), with every `Filters` field (§5.1) except `open_now` applied in
 SQL:
 
@@ -504,7 +504,10 @@ popularity_score = clamp(log1p(v) / log1p(2000))
 # 3. Distance: 1 at the center, ~0.37 at half the radius, ~0.14 at the edge
 distance_score = exp(-distance_m / (radius_m / 2))
 
-base  = 0.5 * rating_score + 0.2 * popularity_score + 0.3 * distance_score
+# Weights depend on how far the host searches (weights_for): up to 3 km they're
+# 0.5 / 0.2 / 0.3; by 20 km distance drops to 0.1 and rating/popularity get the rest
+# (about 0.64 / 0.26), so a wide search surfaces the best places, not just the closest.
+base  = w_rating * rating_score + w_popularity * popularity_score + w_distance * distance_score
 score = base + rng.uniform(-0.05, 0.05)      # rng = random.Random(seed)
 ```
 
